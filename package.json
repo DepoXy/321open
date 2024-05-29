@@ -1,0 +1,17 @@
+{
+  "name": "321open",
+  "version": "0.0.1",
+  "description": "Standup encrypted drives, and seed SSH and GPG caches",
+  "scripts": [
+    "bin/321open",
+    "bin/23skidoo",
+  ],
+  "install": "make install",
+  "dependencies": {
+    "DepoXy/macOS-disktools": "release",
+    "DepoXy/sh-err-trap": "release",
+    "DepoXy/sh-logger": "release",
+    "DepoXy/sh-print-nanos-now": "release"
+  }
+}
+
