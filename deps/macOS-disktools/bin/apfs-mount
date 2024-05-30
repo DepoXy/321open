@@ -1,0 +1,600 @@
+#!/usr/bin/env bash
+# vim:tw=0:ts=2:sw=2:et:norl:nospell:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/macOS-disktools#⚱️
+# License: MIT
+
+# Copyright (c) © 2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# REFER:
+#
+#   man diskutil
+#   diskutil list
+#   diskutil apfs deleteVolume <device>  # Not plumbed below. 
+#
+# CALSO: hdiutil, which can make a tomb-like encrypted file system
+# using encrypted file(s) on disk (e.g., if you wanted to be able
+# to backup the encrypted sources themselves, which I'm not sure
+# you can do with an encrypted (or any) APFS Container or Volume).
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_apfsmount_source_deps () {
+  if ! os_is_macos || ! command -v diskutil > /dev/null; then
+    >&2 echo "ERROR: Requires @macOS"
+
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+apfs_mount () {
+  # Script vars set by `_apfsmount_process_args`
+  local do_create=false
+  local do_unmount=false
+  local do_noauto=false
+  local volume_name=""
+  local mount_dir=""
+  local skip_mount=false
+  local mountpoint_arg=""
+  local raise=""
+  local passphrase_arg=""
+  _apfsmount_process_args "$@"
+
+  if ${do_create}; then
+    VERBOSE="${VERBOSE:-true}"
+
+    create_volume
+    if ${do_noauto}; then
+      inhibit_auto_mount
+    fi
+  else
+    VERBOSE="${VERBOSE:-false}"
+
+    if ${do_unmount}; then
+      unmount_volume
+    elif ${do_noauto}; then
+      VERBOSE="${VERBOSE:-true}"
+
+      inhibit_auto_mount
+    elif ! ${skip_mount}; then
+      mount_volume
+    fi
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# `man diskutil`: "The filesystem parameter sets the permanent APFS
+#  personality for this new APFS Volume; you should specify APFS or
+#  Case-sensitive APFS."
+#
+# - There's no reason to risk case-clashes other devs might see; and
+#   who wants two same-named files but differently-cased? (which makes
+#   terminal tab-complete more tedious, too). So choose insensitivity.
+
+APFS_PERSONALITY="${APFS_PERSONALITY:-APFS}"
+
+# ***
+
+create_volume () {
+  local volume_name="${1:-${volume_name}}"
+
+  # E.g., 'disk3s7'
+  local device
+  device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)" \
+    || true
+
+  if [ -n "${device}" ]; then
+    echo "Already exists: /dev/${device}"
+
+    return 0
+  fi
+
+  # E.g., 'disk3'
+  device="$(print_apfs_container_id)" \
+    || exit_1
+
+  local device_name="/dev/${device}"
+
+  local cmd
+  cmd="$( \
+    echo "diskutil apfs addVolume" \
+      "${device_name}" \
+      "\"${APFS_PERSONALITY}\"" \
+      "\"${volume_name}\"" \
+      "${passphrase_arg}" \
+      "$(! ${skip_mount} || printf -- "-nomount")" \
+      "${mountpoint_arg}"
+  )"
+
+  _apfsmount_eval_cmd "${cmd}" "apfs-addVolume" "Create Volume" \
+    "${device_name}"
+}
+
+# ***
+
+# THANX: https://apple.stackexchange.com/questions/404936/
+#   prevent-encrypted-apfs-volume-on-partition-to-automount-ask-for-password-on-lo[gin]
+
+inhibit_auto_mount () {
+  local volume_name="${1:-${volume_name}}"
+
+  # E.g., 'disk3s7'
+  local volume_label
+  volume_label="$(print_apfs_volume_id "${volume_name}")" \
+    || exit_1
+
+  # Or `diskutil info /dev/${volume_label}`
+  local volume_uuid
+  volume_uuid="$(diskutil info "${volume_label}" | grep "Volume UUID:" | awk '{print $NF}')"
+
+  raise="sudo " sudo_preflight
+
+  # If created, /etc/fstab assigned 644 permissions, owned by root.
+  sudo bash -c "
+    # Load: logger.sh, and colors.sh, for line_in_file.
+    # CXREF: ~/.kit/sh/sh-logger/bin/logger.sh
+    . \"${SHOILERPLATE:-${HOME}/.kit/sh}/sh-logger/bin/logger.sh\"
+    LOG_LEVEL=${LOG_LEVEL_WARN}
+
+    # Load: line_in_file
+    # CXREF: ~/.kit/git/ohmyrepos/lib/line-in-file.sh
+    . \"${OHMYREPOS_LIB:-${GITREPOSPATH:-${HOME}/.kit/git}/ohmyrepos/lib}/line-in-file.sh\"
+
+    line_in_file \"UUID=${volume_uuid} none auto noauto\" \"/etc/fstab\"
+  "
+
+  if ${VERBOSE:-false}; then
+    echo "Updated /etc/fstab to set noauto"
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+mount_volume () {
+  # AVOID: "The APFS Volume disk3s7 is already unlocked (mounted)" [exits 1]
+  local mounted_at
+  if ! mounted_at="$(print_volume_mountpoint "${volume_name}")"; then
+    >&2 echo "ERROR: No such volume: ${volume_name}"
+
+    exit_1
+  fi
+
+  if test -n "${mounted_at}"; then
+    echo "Already mounted: ${mounted_at}"
+
+    return 0
+  fi
+
+  # E.g., 'disk3s7'
+  local device
+  device="$(print_apfs_volume_id "${volume_name}")" \
+    || exit_1
+
+  local device_name="/dev/${device}"
+
+  local mount_cmd="mount"
+  if [ -n "${passphrase_arg}" ]; then
+    mount_cmd="apfs unlock"
+
+    if [ "-passprompt" = "${passphrase_arg}" ]; then
+      # Omit to summon prompt.
+      passphrase_arg=""
+    fi
+  fi
+
+  # SPIKE: What would `apfs unlock -nomount` do?
+  # - For now don't do that.
+  skip_mount=false
+
+  local cmd
+  cmd="$( \
+    echo "diskutil ${mount_cmd}" \
+      "${device_name}" \
+      "${passphrase_arg}" \
+      "$(! ${skip_mount} || printf -- "-nomount")" \
+      "${mountpoint_arg}"
+  )"
+
+  _apfsmount_eval_cmd "${cmd}" "apfs-unlock" "Mount Volume" \
+    "${device_name}"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+unmount_volume () {
+  local volume_name="${1:-${volume_name}}"
+
+  # E.g., 'disk3s7'
+  local device
+  device="$(print_apfs_volume_id "${volume_name}")" \
+    || exit_1
+
+  local device_name="/dev/${device}"
+
+  local cmd
+  cmd="diskutil apfs lock ${device_name}"
+
+  # No `sudo` necessary, even if needed for -mountpoint.
+
+  # Note you can 'lock' or 'unmount' an unencrypted volume:
+  #
+  #   $ diskutil apfs lock /dev/disk3s7
+  #   APFS Volume is now unmounted and locked
+  #
+  #   $ diskutil mount /dev/disk3s7
+  #   Volume artless on /dev/disk3s7 mounted
+  #
+  #   $ diskutil unmount /dev/disk3s7
+  #   Volume artless on disk3s7 unmounted
+
+  _apfsmount_eval_cmd "${cmd}" "apfs-lock" "Unmount Volume" \
+    "${device_name}"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# NODRY: USYNC: ~/.kit/mOS/macOS-disktools/bin/dmg-mount ↔ apfs-mount
+_apfsmount_eval_cmd () {
+  local cmd="$1"
+  local quip="$2"
+  local msg="$3"
+  local name="$4"
+
+  local cmd_output=""
+  local cmd_failed=false
+
+  sudo_preflight
+
+  if ! cmd_output="$(eval "${raise}${cmd}" 2>&1)"; then
+    cmd_failed=true
+  fi
+
+  if ${VERBOSE:-false} && ! ${cmd_failed}; then
+    echo -e "${msg}:\n  \$ ${raise}${cmd}"
+    echo "${cmd_output}" | sed 's/^/  /'
+  fi
+
+  if ${cmd_failed}; then
+    # Check if, e.g., "Error locking APFS Volume; try diskutil unmount
+    #                  to see if there is a dissenter"
+    if echo "${cmd_output}" \
+      | grep -q "^Error locking APFS Volume; try diskutil unmount to see if there is a dissenter$" \
+    ; then
+      unmount_failed=true
+    fi
+
+    >&2 echo "ERROR: ${quip} failed on ${name}:"
+    >&2 echo "  \$ ${raise}${cmd}"
+    echo "${cmd_output}" | >&2 sed 's/^/  /'
+
+    if ${unmount_failed} && [ -n "${name}" ]; then
+      >&2 echo "REFER:"
+      >&2 echo "  \$ diskutil unmount ${name}"
+      diskutil unmount "${name}" 2>&1 | >&2 sed 's/^/  /'
+    fi
+
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USAGE: If a machine has multiple internal device APFS Containers,
+# specify the one to use directly, otherwise `print_apfs_device_id`
+# fails if it finds multiple matches.
+#
+# E.g.,
+#
+#   APFS_CONTAINER_DEVICE=disk3
+
+print_apfs_container_id () {
+  if [ -n "${APFS_CONTAINER_DEVICE}" ]; then
+    printf "%s" "${APFS_CONTAINER_DEVICE}"
+  else
+    print_apfs_device_id "APFS Container Scheme"
+  fi
+}
+
+# ***
+
+print_apfs_volume_id () {
+  local volume_name="$1"
+
+  local device
+  device="$(print_apfs_device_id "APFS Volume ${volume_name}")" \
+    || true
+
+  if test -z "${device}"; then
+    >&2 echo "- Do you need to create it? Perhaps:"
+    >&2 echo "    $(basename -- "$0") --create \"${volume_name}\" [--encrypted]"
+
+    return 1
+  fi
+
+  printf -- "${device}"
+}
+
+# ***
+
+# BWARE: Assumes only 1 "internal" disk (mounted DMG are "external")
+# and only 1 internal "APFS Container Scheme" (mounted DMG might also
+# have a Container).
+#
+# - If more than one device is found, perhaps improve this function,
+#   or just use APFS_CONTAINER_DEVICE to specify the device directly.
+
+print_apfs_device_id () {
+  local pattern="$1"
+
+  local device
+  device="$(diskutil list internal | grep "${pattern}" | awk '{print $NF}')"
+
+  if test -z "${device}"; then
+    >&2 echo "ERROR: No device found for “${pattern}”"
+
+    return 1
+  fi
+
+  if [ $(echo "${device}" | wc -l)  -gt 1 ]; then
+    >&2 echo "ERROR: More than one device found for “${pattern}”"
+    >&2 echo "- Yipes:"
+    echo "${device}" | >&2 sed 's/^/  /'
+
+    return 1
+  fi
+
+  printf -- "${device}"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Checks if the named volume exists and is mounted.
+# E.g.,
+#   @macOS $ mount
+#   ...
+#   /dev/disk3s7 on /Volumes/foo (apfs, local, journaled, protect)
+print_volume_mountpoint () {
+  local volume_name="$1"
+
+  if [ -z "${volume_name}" ]; then
+    >&2 echo "GAFFE: Missing volume name"
+
+    exit_1
+  fi
+
+  # E.g., 'disk3s7'
+  local device
+  device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)" \
+    || true
+
+  if [ -z "${device}" ]; then
+
+    return 1
+  fi
+
+  mount | grep -e "^/dev/${device} on " | cut -d' ' -f3
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+sudo_preflight () {
+  if [ -z "${raise}" ]; then
+
+    return
+  fi
+
+  # Default prompt is "Password:" which I often overlook and
+  # assume I'm being prompted for the encryption passphrase.
+  sudo -v -p "for the sudo: "
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Use after apfs-unlock if -passprompt prompt and not -stdinpassphrase,
+# to clear the associated output. Use case: More concise UX flow. E.g.,
+#
+#     $ diskutil apfs unlock <volume>
+#     Passphrase:
+#     Unlocking any cryptographic user on APFS Volume disk3s7
+#     Unlocked and mounted APFS Volume
+
+# Example function, or available for users; but not used herein.
+tty_scrub_passprompt_output () {
+  # Move cursor up 3 lines. Output after this will overwrite
+  # it, possibly. Or not if output isn't wide enough.
+  printf "\033[3A"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# SAVVY: Re: MOUNT_DIR argument: There's no reason to specitfy a custom
+# mountpoint, as far as the author can tell, because macOS populates the
+# mount root with three dirs:
+#   .Spotlight-V100/, .Trashes/, and .fseventsd/
+# So unless you like noise, you'll likely want to keep your files in a new
+# directory *under* the mount root. E.g., you might create a new directory
+# that you symlink like `ln -s /Volumes/VOLUME_NAME/work/ ~/path/to/work`.
+# (As opposed to mounting VOLUME_NAME to ~/path/to/work, in which case you
+# would see ~/path/to/work/.Spotlight-V100, .Trashes/, etc., i.e., yuck.)
+
+_apfsmount_process_args () {
+  # do_mount is implied (if not other command specifed),
+  # but included in args. for --help completeness.
+  local do_mount=false
+  local cmd_count=0
+
+  local npargs=0
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help|help)
+        _apfsmount_print_usage
+
+        exit_0
+        ;;
+      -a|--add|-c|--create)
+        do_create=true
+        let 'cmd_count += 1'
+        ;;
+      -passprompt|--prompt)
+        passphrase_arg="-passprompt"
+        ;;
+      -stdinpassphrase|--stdin)
+        passphrase_arg="-stdinpassphrase"
+        ;;
+      --noauto)
+        do_noauto=true
+        ;;
+      -u|--umount|--unmount)
+        do_unmount=true
+        let 'cmd_count += 1'
+        ;;
+      -m|--mount)
+        do_mount=true
+        let 'cmd_count += 1'
+        ;;
+      *)
+        npargs=$((npargs + 1))
+
+        case ${npargs} in
+          1)
+            volume_name="$1"
+            ;;
+          2)
+            mount_dir="$1"
+            ;;
+          *)
+            >&2 echo "ERROR: Unknown arg(s): $@"
+
+            exit_1
+            ;;
+        esac
+        ;;
+    esac
+
+    shift
+  done
+
+  skip_mount=false
+  mountpoint_arg=""
+
+  if [ ${cmd_count} -gt 1 ] || ( \
+    ${do_noauto} && (${do_mount} || ${do_unmount}) \
+  ); then
+    >&2 echo "ERROR: Please only specify one command"
+
+    _apfsmount_print_usage
+
+    exit_1
+  fi
+
+  if test -z "${volume_name}"; then
+    _apfsmount_print_usage
+
+    exit_0
+  fi
+
+  if [ "${mount_dir}" = "-" ]; then
+    skip_mount=true
+  elif [ -n "${mount_dir}" ]; then
+    mkdir -p -- "${mount_dir}"
+
+    if [ -n "$(ls -A ${mount_dir})" ]; then
+      >&2 echo "ERROR: mountpoint is not empty: ${mount_dir}"
+
+      exit_1
+    fi
+
+    mountpoint_arg="-mountpoint \"${mount_dir}\""
+
+    # SAVVY: "you must be root to specify a custom mount point"
+    raise="sudo "
+  fi
+}
+
+# ***
+
+_apfsmount_print_usage () {
+  echo "USAGE: $(basename -- "$0") [OPTIONS] VOLUME_NAME [MOUNT_DIR]
+
+Create, mount, and unmount APFS Volumes ... using opinionated defaults
+
+ARGUMENTS
+=========
+
+  VOLUME_NAME           Name of the APFS Volume
+
+  MOUNT_DIR             Optional mountpoint (requires sudo)
+                        [applies to --create and --mount]
+                        [default is /Volumes/VOLUME_NAME]
+
+OPTIONS
+=======
+
+  Commands
+  ========
+
+  -h|--help|help        Print this message
+
+  -a|--add|-c|--create  Create an APFS Volume
+
+  -u|--umount|--unmount Unmount an APFS Volume
+
+  -m|--mount            Mount an APFS Volume [default command]
+
+  Create options
+  ==============
+  
+  --noauto              Inhibit auto-mount via /etc/fstab
+                        [can also be used after --create]
+
+  [PASSWORD OPTION]     Specify a password option (see below)
+                        to enable encryption on the new volume
+
+  Mount options
+  =============
+
+  [PASSWORD OPTION]     Specify a password option (see below)
+                        to specify how the passphrase is sent
+
+  Password Options
+  ================
+
+  -passprompt|--prompt  Prompt for encrypted volume passphrase
+                        [default mount option]
+
+  -stdinpassphrase|--stdin
+                        Expect encrypted volume passphrase on stdin"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+main () {
+  set -e
+
+  # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
+  . "$(dirname -- "$(realpath -- "$0")")/../deps/sh-err-trap/lib/err-trap.sh"
+
+  set_traps
+
+  _apfsmount_source_deps
+
+  # ***
+
+  apfs_mount "$@"
+
+  # ***
+
+  clear_traps
+}
+
+# Only run when executed; no-op when sourced.
+if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
+  main "$@"
+fi
+

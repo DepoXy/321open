@@ -1,0 +1,718 @@
+#!/usr/bin/env bash
+# vim:tw=0:ts=2:sw=2:et:norl:nospell:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/macOS-disktools#⚱️
+# License: MIT
+
+# Copyright (c) © 2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# REFER:
+#
+#   man hdiutil
+#
+# CALSO: `diskutil apfs`, which can make an encrypted file system Volume
+# within an existing APFS Container.
+#
+# - An APFS Volume shares space with the Container, so its size can
+#   grow as large as there's free space on the Container.
+#
+# - A disk image is created with a given maximum size, which may or
+#   may not be claimed immediately (by default, the UDIF type creates
+#   an image of the specified size; alternatively, sparse and
+#   sparsebundle disk images claim space as they grow).
+#
+#   You might be able to use the hdiutil resize and compact commands
+#   to change a disk image's size, or to reclaim disk image space (on
+#   the container file system) that's no longer used by the image.
+#
+# - You can easily share an encrypted disk image between hosts (or
+#   to, e.g., backup) but not so much an APFS Volume.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_dmgmount_source_deps () {
+  if ! os_is_macos || ! command -v diskutil > /dev/null; then
+    >&2 echo "ERROR: Requires @macOS"
+
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+dmg_mount () {
+  _dmgmount_init_environ_args
+
+  # Script vars set by `_dmgmount_process_args`
+  local do_create=false
+  local do_unmount=false
+  local image_path=""
+  local mount_dir=""
+  local skip_mount=false
+  local mountpoint_arg=""
+  local passphrase_arg=""
+  local attach_arg=""
+  _dmgmount_process_args "$@"
+
+  if ${do_create}; then
+    VERBOSE="${VERBOSE:-true}"
+
+    create_disk_image
+  else
+    VERBOSE="${VERBOSE:-false}"
+
+    if ${do_unmount}; then
+      unmount_disk_image
+    elif ! ${skip_mount}; then
+      mount_disk_image
+    fi
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# REFER: `hdiutil create -help`
+
+_dmgmount_init_environ_args () {
+  # Choose from: "HFS+", "Case-sensitive APFS", and more.
+  DMG_FILESYSTEM="${DMG_FILESYSTEM:-APFS}"
+
+  # Sparsebundle uses a directory of files called "bands", while Sparse
+  # is just a single file. Both grow dynamically.
+  #
+  #  # Creates file named with image name and ".sparseimage" suffix.
+  #  DMG_IMAGE_TYPE="${DMG_IMAGE_TYPE:-SPARSE}"
+  #
+  #  # Creates dir. named with image name and ".sparsebundle" suffix.
+  #  DMG_IMAGE_TYPE="SPARSEBUNDLE"
+  #
+  #  # See also legacy format, which claims all the space initially,
+  #  # and creates file named with image name and ".dmg" suffix.
+  #  DMG_IMAGE_TYPE="UDIF"
+  #
+  # `man hdiutil` impresses upon you to use SPARSEBUNDLE:
+  # - "USING PERSISTENT SPARSE IMAGES: As of Mac OS X 10.5, a more
+  #    reliable, efficient, and scalable sparse format, UDSB
+  #    (SPARSEBUNDLE), is recommended for persistent sparse images...."
+  # - "SPARSE images are not recommended for persistent storage,
+  #    though they are relatively safe on Mac OS X 10.3.2 and later."
+  #   (Only *relatively* safe? Do they corrupt easily? How??)
+  # - "[T]he more robust and faster SPARSEBUNDLE type is preferred."
+  #   (But how much *faster*?)
+  #
+  # Apple developed these formats for FileVault, e.g., backing up a
+  # user's home directory, hence their docs might push SPARSEBUNDLE.
+  # - But our use case is not backing up, it's providing a private space
+  #   for your files away from other folx with access to your machine.
+  #   - (And not so much so you can copy files to a less secure intermediate
+  #      location, like a USB flash device, or to cloud storage, which is
+  #      oftentimes how people use an encrypted file system (encfs).)
+  #
+  # You could think of SPARSE like `tomb` on Linux, which mounts a
+  # single encrypted file as a file system (and also has a fixed
+  # size).
+  # - SPARSEBUNDLE, on the other hand, is like CryFS, an encrypted
+  #   file system that uses chunked storage to obfuscate file sizes.
+  #
+  # TESTD/2024-05-30: In practice, it shouldn't matter what you pick.
+  # - For data files, the author doubts you'll notice any difference
+  #   in performance or reliability between the different image types
+  #   and crypto methods.
+  # - E.g., if you're securing text files, and not media or app files,
+  #   you won't notice a difference between SPARSE AND SPARSEBUNDLE.
+  #   - The author tested a simple 75 MB rsync of my private docs,
+  #     and ~/.ssh, ~/.gnupg, and ~/.password-store, and it took four
+  #     seconds no matter the configuration (each disk -size 150m):
+  #     - 4s / 150m SPARSEBUNDLE Unencrypted
+  #     - 4s / 150m SPARSEBUNDLE AES-128
+  #     - 4s / 150m SPARSEBUNDLE AES-256
+  #     - 4s / 150m SPARSE AES-256
+  #   - Obviously, this may not be the best read/write test, but it is
+  #     instructive if all you care about is securing some text files.
+  #
+  # We'll mimic tomb and default to SPARSE.
+  # - User can set the environ if they want otherwise:
+  #     DMG_IMAGE_TYPE=SPARSEBUNDLE dmg-mount ...
+  DMG_IMAGE_TYPE="${DMG_IMAGE_TYPE:-SPARSE}"
+
+  print_image_suffix () {
+    case "${DMG_IMAGE_TYPE}" in
+      UDIF) printf ".dmg" ;;
+      SPARSE) printf ".sparseimage" ;;
+      SPARSEBUNDLE) printf ".sparsebundle" ;;
+    esac
+  }
+  DMG_IMAGE_SUFFIX="$(print_image_suffix)"
+
+  # SAVVY: Encryption options:
+  #   -stdinpass
+  #   -agentpass
+  #   -certificate <path-to-cert-file>
+  #   -pubkey <public-key-hash>[,pkh2,...]
+  #   -imagekey <key>=<value>
+  #   -tgtimagekey <key>=<value>
+
+  # REFER: -encryption <crypto method>
+  # - AES-128 - 128-bit AES encryption (recommended)
+  # - AES-256 - 256-bit AES encryption (more secure, but slower)
+  # SAVVY: Omit the colon, e.g., ${foo-sub}, so user can set empty.
+  DMG_ENCRYPTION="${DMG_ENCRYPTION-AES-256}"
+}
+
+# BWARE: `hdiutil` is non-obvious about size-too-small errors, e.g.,
+#
+#   $ printf pp | hdiutil create -encryption -stdinpass -size 10k -type "SPARSE" foobar
+#   hdiutil: create failed - error -5344
+#   $ printf pp | hdiutil create -encryption -stdinpass -size 100k -type "SPARSE" foobar
+#   hdiutil: create failed - RPC version wrong
+#   $ printf pp | hdiutil create -encryption -stdinpass -size 1000k -type "SPARSE" foobar
+#   created: /path/to/foobar.sparseimage
+#
+#   $ printf pp | hdiutil create -encryption -stdinpass -size 100k -type "SPARSE" -fs "HFS+" foobar
+#   hdiutil: create failed - Operation not permitted
+
+create_disk_image () {
+  if test -z "${di_size}"; then
+    echo "ERROR: Please specify the disk image size."
+
+    exit_0
+  fi
+
+  # Note that image_path may contain the disk image suffix,
+  # which `hdiutil create` properly handles (i.e., it won't
+  # double-suffix).
+  # - Get the full path, including the mandatory suffix.
+  local image_real
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    || return 1
+
+  if [ -f "${image_real}" ]; then
+    >&2 echo "ERROR: Image already exists: ${image_real}"
+
+    return 1
+  fi
+
+  # We default the Volume Name to the image name with the mandatory
+  # suffix removed.
+  # - Otherwise `hdiutil create` assigns 'untitled' as the Volume Name.
+  local volume_name
+  volume_name="$(basename -- "${image_real%${DMG_IMAGE_SUFFIX}}")"
+  # Note we could let user set custom Volume Name from CLI args
+  # but there isn't/hasn't been a compelling reason for doing so.
+  # - Nonetheless, here's a simple, hacky environ arg to set volume name.
+  volume_name="${DMG_VOLUME_NAME:-${volume_name}}"
+
+  if [ -z "${volume_name}" ]; then
+    >&2 echo "ERROR: Image name cannot be the suffix: ${image_path}"
+
+    return 1
+  fi
+
+  local encryption_arg=""
+  if [ -n "${DMG_ENCRYPTION}" ]; then
+    encryption_arg="-encryption \"${DMG_ENCRYPTION}\""
+  fi
+
+  local image_dir
+  image_dir="$(dirname -- "${image_real}")"
+
+  mkdir -p -- "${image_dir}"
+
+  local cmd
+  cmd="$( \
+    echo "hdiutil create \"${image_real}\"" \
+      "-type \"${DMG_IMAGE_TYPE}\"" \
+      "${encryption_arg}" \
+      "${passphrase_arg}" \
+      "-size \"${di_size}\"" \
+      "-fs \"${DMG_FILESYSTEM}\"" \
+      "-nospotlight" \
+      "-volname \"${volume_name}\"" \
+      "${attach_arg}" \
+  )"
+
+  _dmgmount_eval_cmd "${cmd}" "hdiutil-create" "Create Disk Image" \
+    "${volume_name}"
+
+  # Remove group permissions (not that it probably matters).
+  chmod 640 "${image_real}"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Unlike `diskutil apfs unlock`, which fails if the image is already
+# mounted, `hdiutil attach` behaves the same whether mounted or not,
+# e.g.,
+#   $ printf <pwd> | hdiutil attach -stdinpass /path/to/dmg
+#   /dev/disk4          	GUID_partition_scheme
+#   /dev/disk4s1        	Apple_APFS
+#   /dev/disk5          	EF57347C-0000-11AA-AA11-0030654
+#   /dev/disk5s1        	41504653-0000-11AA-AA11-0030654	/path/to/dmg
+
+mount_disk_image () {
+  if is_disk_image_mounted "${image_path}"; then
+    echo "Already mounted: ${image_path}"
+
+    return 0
+  fi
+
+  local image_real
+  image_real="$(resolve_image_path "${image_path}")" \
+    || return 1
+
+  if [ "-agentpass" = "${passphrase_arg}" ]; then
+    # Omit to summon prompt.
+    passphrase_arg=""
+  fi
+
+  local cad
+  cmd="$( \
+    echo "hdiutil attach" \
+      "${image_path}" \
+      "${mountpoint_arg}" \
+      "${passphrase_arg}" \
+  )"
+
+  _dmgmount_eval_cmd "${cmd}" "hdiutil-attach" "Mount Disk Image" \
+    "$(basename -- "${image_path}")"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+unmount_disk_image () {
+  if ! is_disk_image_mounted "${image_path}"; then
+    echo "Not currently mounted: ${image_path}"
+
+    return 0
+  fi
+
+  local image_real
+  image_real="$(resolve_image_path "${image_path}")" \
+    || return 1
+
+  local mountpoint
+  mountpoint="$(print_disk_image_mountpoint "${image_path}")" \
+    || return 1
+
+  # Similarly:
+  #   hdiutil eject ${mountpoint}
+
+  local cmd
+  cmd="hdiutil detach ${mountpoint}"
+
+  _dmgmount_eval_cmd "${cmd}" "hdiutil-detach" "Unmount Disk Image" \
+    "${mountpoint}"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# NODRY: USYNC: ~/.kit/mOS/macOS-disktools/bin/apfs-mount ↔ .../dmg-mount
+_dmgmount_eval_cmd () {
+  local cmd="$1"
+  local quip="$2"
+  local msg="$3"
+  local name="$4"
+
+  local cmd_output=""
+  local cmd_failed=false
+
+  local unmount_cmd=""
+  local unmount_output=""
+  local unmount_failed=false
+
+  if ! cmd_output="$(eval "${cmd}" 2>&1)"; then
+    cmd_failed=true
+  fi
+
+  if ${VERBOSE:-false} && ! ${cmd_failed}; then
+    echo -e "${msg}:\n  \$ ${cmd}"
+    echo "${cmd_output}" | sed 's/^/  /'
+  fi
+
+  if ${cmd_failed}; then
+    # Check if, e.g., "hdiutil: couldn't unmount "disk5" - Resource busy"
+    if echo "${cmd_output}" \
+      | grep -q "^hdiutil: couldn't unmount \"[^\"]\\+\" - Resource busy$" \
+    ; then
+      unmount_failed=true
+    fi
+
+    if ${unmount_failed}; then
+      # Check list of apps with refs to said disk, e.g.,
+      #   $ lsof /Volumes/vestige
+      #   COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF  NODE
+      #     NAME
+      #   keyboxd 58838 user    5u   REG   1,25    65536 18407
+      #     /Volumes/vestige/.clench/.gnupg/public-keys.d/pubring.db
+      if ! lsof "${name}" > /dev/null; then
+        # So, `lsof` doesn't skow any apps... is it safe to `-force`?
+        unmount_cmd="${cmd} -force"
+        if unmount_output="$(eval "${unmount_cmd}" 2>&1)"; then
+          >&2 echo "BWARE: -force unmounted “${name}”"
+
+          cmd_failed=false
+          unmount_failed=false
+        fi
+
+        if ${VERBOSE:-false}; then
+          echo -e "${msg}:\n  \$ ${cmd} -force"
+          echo "${unmount_output}" | sed 's/^/  /'
+        fi
+      fi
+    fi
+  fi
+
+  if ${cmd_failed}; then
+    >&2 echo "ERROR: ${quip} failed on ${name}:"
+    >&2 echo "  \$ ${cmd}"
+    echo "${cmd_output}" | >&2 sed 's/^/  /'
+
+    if [ -n "${unmount_cmd}" ]; then
+      >&2 echo "  \$ ${unmount_cmd}"
+      echo "${unmount_output}" | >&2 sed 's/^/  /'
+    fi
+
+    if ${unmount_failed} && [ -n "${name}" ]; then
+      >&2 echo "REFER:"
+      >&2 echo "  \$ lsof ${name}"
+      lsof "${name}" | >&2 sed 's/^/  /'
+    fi
+
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Checks if the disk image path exists and is mounted.
+#
+# - E.g.,
+#
+#   @macOS $ hdiutil info
+#   framework       : 654.120.2
+#   driver          : 654.120.2
+#   ================================================
+#   image-path      : /path/to/dmg
+#   ...
+#
+# Some other places you may or may not see volume name or image path:
+#
+# - `hdiutil imageinfo <path>` shows static details about an image file,
+#   but it does not show the volume name, or if the image is mounted.
+#
+# - `diskutil list` shows mounted volume names, but not image paths
+#   (nor mountpoints, but it does show device names).
+#
+#   - Note there can be more than one devices with the same volume name.
+#
+# - `hdiutil attach <path>` fails if the disk image is mounted:
+#
+#     hdiutil: attach failed - Resource busy
+#
+# - `hdiutil info` shows a list of key-values for each mounted disk image,
+#   including the path, the device name, and the mountpoint.
+#
+# - `mount` shows device names, mountpoints; not volume names, image paths.
+#
+# Which basically means don't bother with the volume name.
+#
+# - Use image path to check if mounted, and for the mountpoint.
+#
+#   - This is different from apfs-mount, which uses the volume
+#     name to determine if mounted, and to find the mountpoint.
+
+is_disk_image_mounted () {
+  local image_real
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    || exit_1
+
+  hdiutil info | grep -q -e "^image-path \+: \+${image_real}$"
+}
+
+resolve_image_path () {
+  local image_real
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    || return 1
+
+  if [ ! -f "${image_real}" ]; then
+    >&2 echo "ERROR: No such image path: ${image_path}"
+
+    return 1
+  fi
+
+  printf "%s" "${image_real}"
+}
+
+# SAVVY: hdiutil creates a disk image using the image name with a special suffix.
+#
+# - BWARE: If you remove or change the suffix, `hdituil attach` will mount
+#   the image read-only (and regardless if you `hdiutil attach -readwrite`).
+
+print_image_path_canonicalize_missing () {
+  local image_path="$1"
+
+  if [ -z "${image_path}" ]; then
+    >&2 echo "GAFFE: Missing image path [print_image_path_canonicalize_missing]"
+
+    return 1
+  fi
+
+  # Adds suffix if not present.
+  # Uses readlink so that path parts need not exist.
+  echo "$($(gnu_readlink) -m -- "${image_path%${DMG_IMAGE_SUFFIX}}")${DMG_IMAGE_SUFFIX}"
+}
+
+# ***
+
+gnu_readlink () {
+  command -v greadlink || command -v readlink
+}
+
+# ***
+
+# We detach using the mountpoint, which we could have user send
+# as arg, or we can tediously parse for it given the image path.
+#
+# - We'll do the latter, but realize this call is *fragile*.
+#
+#   - We look for the === separator to distinguish between images,
+#     and we match the "image-path " line to find the image block.
+#
+# - See also `hdiutil info -plist` XML output, but that looks
+#   even more tedious to parse (even using `xq` jq wrapper).
+#
+# - E.g.,
+#
+#   $ image_path="/path/to/dmg"
+#   $ hdiutil info \
+#     | awk 'BEGIN { state = 0; pattern = "^image-path +: '${image_path}'$"};
+#       $0 ~ pattern { state = 1; }
+#       { if (state == 1) {
+#         if ($0 ~ /^================================================$/)
+#           { print last; state = 2; }
+#         else { last = $NF; } } }
+#       END { if (state == 1) { print last; } }'
+#   /path/to/mountpoint
+
+print_disk_image_mountpoint () {
+  local image_path="$1"
+
+  if [ -z "${image_path}" ]; then
+    >&2 echo "GAFFE: Missing image path [print_disk_image_mountpoint]"
+
+    exit_1
+  fi
+
+  local image_real
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    || return 1
+
+  # ***
+
+  hdiutil info \
+  | awk '
+    BEGIN {
+      state = 0;
+      pattern = "^image-path +: '${image_real}'$";
+    }
+    $0 ~ pattern { state = 1; }
+    {
+      if (state == 1) {
+        if ($0 ~ /^================================================$/) {
+          print last;
+          state = 2;
+        } else {
+          last = $NF;
+        }
+      }
+    }
+    END { if (state == 1) { print last; } }'
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_dmgmount_process_args () {
+  # do_mount is implied (if not other command specifed),
+  # but included in args. for --help completeness.
+  local do_mount=false
+  local cmd_count=0
+
+  local npargs=0
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help|help)
+        _dmgmount_print_usage
+
+        exit_0
+        ;;
+      -a|--add|-c|--create)
+        do_create=true
+        let 'cmd_count += 1'
+        ;;
+      -s|-size|--size)
+        di_size="$2"
+        [ $# -gt 1 ] && shift
+        ;;
+      # REFER: Passphrase options:
+      #   -encryption | -stdinpass | -agentpass | -certificate | -pubkey
+      # - This script assumes -encryption, which means
+      #   -agentpass is the default.
+      -agentpass|--prompt)
+        passphrase_arg="-agentpass"
+        ;;
+      -stdinpass|--stdin)
+        # SAVVY/2024-05-26: Doc says "expects null-terminated input"
+        # but works fine with `printf "%s" "<pwd>" | hdiutil ...`.
+        passphrase_arg="-stdinpass"
+        ;;
+      -attach|--attach)
+        attach_arg="-attach"
+        ;;
+      -u|--umount|--unmount)
+        do_unmount=true
+        let 'cmd_count += 1'
+        ;;
+      -m|--mount)
+        do_mount=true
+        let 'cmd_count += 1'
+        ;;
+      *)
+        npargs=$((npargs + 1))
+
+        case ${npargs} in
+          1)
+            image_path="$1"
+            ;;
+          2)
+            mount_dir="$1"
+            ;;
+          *)
+            >&2 echo "ERROR: Unknown arg(s): $@"
+
+            exit_1
+            ;;
+        esac
+        ;;
+    esac
+
+    shift
+  done
+
+  skip_mount=false
+  mountpoint_arg=""
+
+  if [ ${cmd_count} -gt 1 ]; then
+    >&2 echo "ERROR: Please only specify one command"
+
+    _dmgmount_print_usage
+
+    exit_1
+  fi
+
+  if test -z "${image_path}"; then
+    _dmgmount_print_usage
+
+    exit_0
+  fi
+
+  if [ "${mount_dir}" = "-" ]; then
+    skip_mount=true
+  elif [ -n "${mount_dir}" ]; then
+    mkdir -p -- "${mount_dir}"
+
+    if [ -n "$(ls -A ${mount_dir})" ]; then
+      >&2 echo "ERROR: mountpoint is not empty: ${mount_dir}"
+
+      exit_1
+    fi
+
+    mountpoint_arg="-mountpoint \"${mount_dir}\""
+  fi
+}
+
+# ***
+
+_dmgmount_print_usage () {
+  echo "USAGE: $(basename -- "$0") [OPTIONS] IMAGE_PATH [MOUNT_DIR]
+
+Create, mount, and unmount Disk Images ... using opinionated defaults
+
+ARGUMENTS
+=========
+
+  IMAGE_PATH            Path to disk image [with or without
+                        the mandatory suffix — ${DMG_IMAGE_SUFFIX}]
+
+OPTIONS
+=======
+
+  Commands
+  ========
+
+  -h|--help|help        Print this message
+
+  -a|--add|-c|--create  Create a Disk Image
+
+  -u|--umount|--unmount Unmount a Disk Image
+
+  -m|--mount            Mount a Disk Image [default command]
+
+  Create options
+  ==============
+  
+  -s|-size|--size       <N>|<N>[b|k|m|g|t|p|e]
+                        (e.g., 666k, 50m, 1g, etc.) [required]
+                        - Don't set too low or errors
+
+  -attach|--attach      Attach the image after creating it
+                        [to /Volumes/VOLUME_NAME, where
+                        VOLUME_NAME is IMAGE_PATH basename
+                        without the disk image suffix]
+
+  [PASSWORD OPTION]     Specify a password option (see below)
+
+  Mount options
+  =============
+
+  MOUNT_DIR             Optional mountpoint
+                        [default is /Volumes/VOLUME_NAME]
+
+  [PASSWORD OPTION]     Specify a password option (see below)
+
+  Password Options
+  ================
+
+  -agentpass|--prompt   Prompt for passphrase [default option]
+
+  -stdinpass|--stdin    Expect passphrase on stdin"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+main () {
+  set -e
+
+  # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
+  . "$(dirname -- "$(realpath -- "$0")")/../deps/sh-err-trap/lib/err-trap.sh"
+
+  set_traps
+
+  _dmgmount_source_deps
+
+  # ***
+
+  dmg_mount "$@"
+
+  # ***
+
+  clear_traps
+}
+
+# Only run when executed; no-op when sourced.
+if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
+  main "$@"
+fi
+
