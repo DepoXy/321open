@@ -1,0 +1,12 @@
+# vim:tw=0:ts=2:sw=2:et:norl:ft=bash
+
+# USAGE: Copy to ~/.config/depoxy/321open.cfg and customize.
+
+APFS_PLAIN_VOLUME_NAME="artless"
+
+APFS_ENCFS_VOLUME_NAME="fantasm"
+
+DMG_ENCFS_IMAGE_NAME="vestige"
+
+DMG_ENCFS_IMAGE_SIZE="50m"
+

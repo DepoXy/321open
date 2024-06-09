@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+# vim:tw=0:ts=2:sw=2:et:norl:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/321open#👐
+# License: MIT
+
+# Copyright (c) © 2019-2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+__USAGE__='
+
+  # Add to PATH so you can 23-skidoo from anywhere
+  23skidoo
+
+  # Create an alias if you need a kill switch
+  # - Note that `panic<TAB>` prints `panic\!`
+  #   but that fails; you would run `panic!`.
+  alias panic!="_23PANIC=true 23skidoo"
+'
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_23PANIC=${_23PANIC:-false}
+
+# Incl. the APFS plain volume.
+_23PLAIN=${_23PLAIN:-false}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_23skidoo_source_deps () {
+  local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
+
+  # Loads APFS_*, DMG_*, prompt_passphrase, highlight, etc.
+  # - CXREF: ~/.kit/odd/321open/bin/biblio.321
+  #   - Also sources:
+  #     - Loads error, notice, info, debug, etc., and colors.sh.
+  #       ~/.kit/sh/sh-logger/bin/logger.sh
+  #       ~/.kit/sh/sh-colors/bin/colors.sh
+  #     - Loads apfs_mount, print_apfs_volume_id, print_volume_mountpoint, etc.
+  #       ~/.kit/odd/321open/deps/macOS-disktools/bin/apfs-mount
+  #     - Loads dmg_mount, print_disk_image_mountpoint, etc.
+  #       ~/.kit/odd/321open/deps/macOS-disktools/bin/dmg-mount
+  #     - Loads User's APFS_*, DMG_*
+  #       ~/.config/depoxy/321open.cfg
+  . "${_321_root}/lib/biblio.321"
+
+  # Load: gpg_forget_cache, gpg_kill_keyboxd
+  . "${_321_root}/lib/biblio-gpg"
+
+  # Load: remove_key_paddock_symlinks
+  . "${_321_root}/lib/key_paddock.sh"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+apfs_unmount () {
+  local volume_name="$1"
+
+  if [ -z "${volume_name}" ]; then
+    # User opted-out.
+
+    return 0
+  fi
+
+  local apfs_mntpt
+  if ! apfs_mntpt="$(print_volume_mountpoint "${volume_name}")"; then
+    info "No such vol: $(highlight "${volume_name}")"
+
+    return 0
+  fi
+
+  if [ -z "${apfs_mntpt}" ]; then
+    info "Was offline: $(highlight "${volume_name}")"
+
+    return 0
+  fi
+
+  # If mounted, prints, "APFS Volume is now unmounted and locked". Otherwise
+  # prints, e.g., "The APFS Volume /dev/disk3s7 is already locked"; exits 1.
+  local cmd_output
+  if ! cmd_output="$(VERBOSE=true apfs_mount -u "${volume_name}" 2>&1)"; then
+    >&2 warn "${cmd_output}"
+
+    exit_1
+  fi
+
+  local exp_output="  APFS Volume is now unmounted and locked"
+  if [ "$(echo "${cmd_output}" | tail -n 1)" != "${exp_output}" ]; then
+    >&2 warn "ERROR: Unexpected output:\n$(echo "${cmd_output}" | sed 's/^/  /')"
+
+    exit_1
+  fi
+
+  notice "Now offline: $(highlight "${volume_name}")"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+dmg_unmount () {
+  local image_path="$1"
+
+  # Update DMG_IMAGE_SUFFIX per DMG_IMAGE_TYPE.
+  _dmgmount_init_environ_args
+
+  local dmg_mntpt
+  dmg_mntpt="$(print_disk_image_mountpoint "${image_path}")" \
+    || exit_1
+
+  local image_name
+  image_name="$(basename -- "${image_path%${DMG_IMAGE_SUFFIX}}")"
+
+  if [ -z "${image_name}" ]; then
+    # User opted-out.
+
+    return 0
+  fi
+
+  if [ -z "${dmg_mntpt}" ]; then
+    info "Was offline: $(highlight "${image_name}")"
+
+    return 0
+  fi
+
+  local image_real
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    || exit_1
+
+  dmg_mount -u "${image_real}"
+
+  restore_readonly_image "${image_real}"
+
+  notice "Now offline: $(highlight "${image_name}")"
+}
+
+# ***
+
+restore_readonly_image () {
+  local image_real="$1"
+
+  if ! ${DMG_OBFUSCATE_NAME:-true}; then
+
+    return 0
+  fi
+
+  # If mounted while renamed, fs is read-only.
+  local image_ronly="${image_real%${DMG_IMAGE_SUFFIX}}"
+
+  command mv -- "${image_real}" "${image_ronly}"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Delete DMG images and APFS volumes, for _23PANIC.
+
+_23skidoo_delete_images_and_volumes_if_panic () {
+  if ! ${_23PANIC:-false}; then
+    # Unreachable path, because caller also checks.
+
+    return 0
+  fi
+
+  declare -a _APFS_DELETED_UUIDS
+  _APFS_DELETED_UUIDS=()
+
+  _23skidoo_delete_dmg "${DMG_ENCFS_IMAGE_PATH}"
+
+  _23skidoo_delete_apfs "${APFS_ENCFS_VOLUME_NAME}"
+
+  if ${_23PLAIN:-false}; then
+    _23skidoo_delete_apfs "${APFS_PLAIN_VOLUME_NAME}"
+  fi
+
+  _23skidoo_cleanup_etc_fstab
+}
+
+# ***
+
+# REFER: I'd be surprised if it would be possible to recover a
+# deleted APFS Volume, whether from SSD or HDD.
+# https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf
+# https://developer.apple.com/documentation/foundation/file_system/about_apple_file_system
+# https://apple.stackexchange.com/questions/337699/how-to-securely-shred-a-file-in-apfs-macos-mojave-and-newer
+
+_23skidoo_delete_apfs () {
+  local volume_name="$1"
+
+  # E.g., 'disk3s7'
+  local device
+  if device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)"; then
+    # Or `diskutil info /dev/${device}`
+    local volume_uuid
+    volume_uuid="$( \
+      diskutil info "${device}" | grep "Volume UUID:" | awk '{print $NF}'
+    )"
+    _APFS_DELETED_UUIDS+=("${volume_uuid}")
+
+    local cmd
+    cmd="diskutil apfs deleteVolume \"${volume_name}\""
+
+    VERBOSE=false \
+    _apfsmount_eval_cmd "${cmd}" "apfs-deleteVolume" "Delete Volume"
+
+    notice "Now removed: $(highlight "${volume_name}")"
+  else
+    info "Was removed: $(highlight "${volume_name}")"
+  fi
+}
+
+_23skidoo_cleanup_etc_fstab () {
+  if [ ${#_APFS_DELETED_UUIDS[@]} -eq 0 ]; then
+
+    return 0
+  fi
+
+  local volume_uuid
+  for volume_uuid in "${_APFS_DELETED_UUIDS[@]}"; do
+    _23skidoo_delete_apfs_auto_mount "${volume_uuid}"
+  done
+
+  info "Removed ≤${#_APFS_DELETED_UUIDS[@]} device(s) from /etc/fstab"
+}
+
+_23skidoo_delete_apfs_auto_mount () {
+  local volume_uuid="$1"
+
+  raise="sudo " sudo_preflight
+
+  # If created, /etc/fstab assigned 644 permissions, owned by root.
+  sudo sed -i "/^UUID=${volume_uuid} none auto noauto\$/d" "/etc/fstab"
+}
+
+# ***
+
+_23skidoo_delete_dmg () {
+  local image_path="$1"
+
+  local image_name
+  image_name="$(basename -- "${image_path%${DMG_IMAGE_SUFFIX}}")"
+
+  local image_real
+  if image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    && [ -e "${image_real}" ] \
+  ; then
+    # Using -r supports both SPARSEBUNDLE (.sparsebundle)
+    # directories, and SPARSE (.sparseimage) files.
+    command rm -r -- "${image_real}"
+
+    # notice "Now removed: $(highlight "${image_real}")"
+    notice "Now removed: $(highlight "${image_name}")"
+  else
+    # info "Was removed: $(highlight "${image_path}")"
+    info "Was removed: $(highlight "${image_name}")"
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+main () {
+  set -e
+
+  # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
+  . "$(dirname -- "$(realpath -- "$0")")/../deps/sh-err-trap/lib/err-trap.sh"
+
+  set_traps
+
+  _23skidoo_source_deps
+
+  # ***
+
+  # If you cannot unmount, try `lsof /Volumes/<mount>`.
+  # - Here we kill known knowns.
+  gpg_kill_keyboxd
+
+  dmg_unmount "${DMG_ENCFS_IMAGE_PATH}"
+
+  apfs_unmount "${APFS_ENCFS_VOLUME_NAME}"
+
+  if ${_23PLAIN:-false}; then
+    apfs_unmount "${APFS_PLAIN_VOLUME_NAME}"
+  fi
+
+  if ${_23PANIC:-false}; then
+    _23skidoo_delete_images_and_volumes_if_panic
+  fi
+
+  gpg_forget_cache
+
+  remove_key_paddock_symlinks
+
+  notice "$( \
+    fg_black)$(bg_lightgreen
+  ) ▶ You’re $( \
+    attr_italic)$(attr_underline
+  )all clear!$( \
+    res_underline)$(res_italic
+  ) ◀ $(attr_reset)"
+
+  # ***
+
+  clear_traps
+}
+
+# ***
+
+# Only run when executed; no-op when sourced.
+if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
+  main "$@"
+fi
+

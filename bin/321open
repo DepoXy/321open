@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+# vim:tw=0:ts=2:sw=2:et:norl:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/321open#👐
+# License: MIT
+
+# Copyright (c) © 2019-2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+__USAGE__='
+
+  321open
+'
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_321open_source_deps () {
+  local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
+
+  if [ -z "${BASH_SOURCE}" ]; then
+    >&2 echo "GAFFE: Please source/run through Bash"
+
+    exit_1
+  fi
+
+  # Loads APFS_*, DMG_*, prompt_passphrase, highlight, etc.
+  # - CXREF: ~/.kit/odd/321open/bin/biblio.321
+  #   - Also sources:
+  #     - Loads error, notice, info, debug, etc., and colors.sh.
+  #       ~/.kit/sh/sh-logger/bin/logger.sh
+  #       ~/.kit/sh/sh-colors/bin/colors.sh
+  #     - Loads apfs_mount, print_apfs_volume_id, print_volume_mountpoint, etc.
+  #       ~/.kit/odd/321open/deps/macOS-disktools/bin/apfs-mount
+  #     - Loads dmg_mount, print_disk_image_mountpoint, etc.
+  #       ~/.kit/odd/321open/deps/macOS-disktools/bin/dmg-mount
+  #     - Loads User's APFS_*, DMG_*
+  #       ~/.config/depoxy/321open.cfg
+  . "${_321_root}/lib/biblio.321"
+
+  # Loads gpg- and gnupg-related 321open functions
+  # - CXREF: ~/.kit/odd/321open/lib/biblio-gpg
+  . "${_321_root}/lib/biblio-gpg"
+
+  # Loads ssh-related 321open functions
+  # - CXREF: ~/.kit/odd/321open/lib/biblio-ssh
+  . "${_321_root}/lib/biblio-ssh"
+
+  # Loads ensure_key_paddock_exists
+  # - CXREF: ~/.kit/odd/321open/lib/key-paddock
+  . "${_321_root}/lib/key_paddock.sh"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_apfs_mount () {
+  local volume_name="$1"
+  local volume_mntpt="$2"
+  local encfs_type="$3"
+
+  if [ -z "${volume_name}" ]; then
+    # User opted-out.
+
+    return 0
+  fi
+
+  # As reported by: print_volume_mountpoint
+  if [ -n "${volume_mntpt}" ]; then
+    info "Already online: $(highlight "${volume_name}")"
+
+    return 0
+  fi
+
+  # Note we always send PREVALENT_PHRASE to apfs_mount
+  # regardless of -stdinpassphrase because lazy.
+  local pass_arg=""
+  if [ "${encfs_type}" = "encfs" ]; then
+    if [ -n "${PREVALENT_PHRASE}" ]; then
+      pass_arg="-stdinpassphrase"
+    else
+      pass_arg="-passprompt"
+    fi
+  fi
+
+  local device
+  device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)" \
+    || true
+
+  if [ -n "${device}" ]; then
+    # CXREF: ~/.kit/mOS/macOS-disktools/bin/apfs-mount
+    printf "%s" "${PREVALENT_PHRASE}" \
+      | VERBOSE="${VERBOSE:-false}" \
+          apfs_mount "${volume_name}" ${pass_arg} \
+          || exit_1
+  else
+    notice "Add-ing volume: $(highlight "${volume_name}")"
+
+    local noauto=""
+
+    # HANDY: Disable VERBOSE to see hdiutil-create command, e.g.,
+    #
+    #  diskutil apfs addVolume /dev/disk3 "Case-sensitive APFS" "artless"
+    #
+    #  diskutil apfs addVolume /dev/disk3 "Case-sensitive APFS" "fantasm" \
+    #   -stdinpassphrase
+
+    printf "%s" "${PREVALENT_PHRASE}" \
+      | VERBOSE="${VERBOSE:-false}" \
+          apfs_mount --create "${volume_name}" ${pass_arg} ${noauto} \
+          || exit_1
+
+    created_fs=true
+
+    if [ "${encfs_type}" = "encfs" ]; then
+      VERBOSE="${VERBOSE:-false}" \
+        apfs_mount --noauto "${volume_name}" \
+          || exit_1
+
+      notice "Writ noauto to: /etc/fstab"
+    fi
+  fi
+
+  # If -passprompt prompt and not -stdinpassphrase,
+  # you might wanna cleanup the UX output:
+  #
+  #  tty_scrub_passprompt_output
+
+  notice "Brought online: $(highlight "${volume_name}")"
+}
+
+# ***
+
+dmg_mount_encfs () {
+  local image_path="$1"
+  local dmg_mntpt="$2"
+  local image_size="$3"
+
+  # Update DMG_IMAGE_SUFFIX per DMG_IMAGE_TYPE.
+  _dmgmount_init_environ_args
+
+  local image_name
+  image_name="$(basename -- "${image_path%${DMG_IMAGE_SUFFIX}}")"
+
+  if [ -z "${image_name}" ] || [ -z "${image_size}" ]; then
+    # User opted-out.
+
+    return 0
+  fi
+
+  # As reported by: print_disk_image_mountpoint
+  if [ -n "${dmg_mntpt}" ]; then
+    # info "Already online: $(highlight "${image_path}")"
+    info "Already online: $(highlight "${image_name}")"
+
+    return 0
+  fi
+
+  local pass_arg=""
+  if [ -n "${PREVALENT_PHRASE}" ]; then
+    pass_arg="-stdinpass"
+  else
+    pass_arg="-agentpass"
+  fi
+
+  local image_real
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
+    || exit_1
+
+  restore_readwrite_image "${image_real}"
+
+  if [ -f "${image_real}" ]; then
+    # CXREF: ~/.kit/mOS/macOS-disktools/bin/dmg-mount
+    printf "%s" "${PREVALENT_PHRASE}" \
+      | VERBOSE="${VERBOSE:-false}" \
+          dmg_mount ${pass_arg} "${image_real}" \
+          || exit_1
+  else
+    notice "Creating image: $(highlight "${image_name}")"
+
+    # HANDY: Disable VERBOSE to see hdiutil-create command, e.g.,
+    #
+    #  hdiutil create "/Users/user/.local/share/depoxy/images/vestige.sparseimage" \
+    #   -type "SPARSE" -encryption "AES-256" -stdinpass -size "50m" \
+    #   -fs "Case-sensitive APFS" -nospotlight -volname "vestige" -attach
+
+    printf "%s" "${PREVALENT_PHRASE}" \
+      | VERBOSE="${VERBOSE:-false}" \
+          dmg_mount ${pass_arg} -size "${image_size}" \
+            --create "${image_real}" -attach \
+          || exit_1
+
+    created_fs=true
+  fi
+
+  notice "Brought online: $(highlight "${image_name}")"
+}
+
+# ***
+
+restore_readwrite_image () {
+  local image_real="$1"
+
+  if [ -f "${image_real}" ] \
+    || ! ${DMG_OBFUSCATE_NAME:-true} \
+    || [ ${DMG_IMAGE_SUFFIX} != ".sparseimage" ] \
+  ; then
+
+    return 0
+  fi
+
+  # If mounted while renamed, fs is read-only.
+  local image_ronly="${image_real%${DMG_IMAGE_SUFFIX}}"
+
+  if [ -f "${image_ronly}" ]; then
+    command mv -- "${image_ronly}" "${image_real}"
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+main () {
+  set -e
+
+  # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
+  . "$(dirname -- "$(realpath -- "$0")")/../deps/sh-err-trap/lib/err-trap.sh"
+
+  set_traps
+
+  _321open_source_deps
+
+  # ***
+
+  # We'll reload GPG iff ~/.gnupg/gpg-agent.conf changes.
+  local gpg_agent_hash=0
+  gpg_agent_hash="$(print_gpg_agent_hash)"
+
+  # ***
+
+  # Note that the plain mount is setup to auto-mount, but user can
+  # bring it offline in a PANIC; and we'll always mount on 321open.
+  local apfs_mntpt_plain=""
+  apfs_mntpt_plain="$(print_volume_mountpoint "${APFS_PLAIN_VOLUME_NAME}" 2> /dev/null)" \
+    || true
+
+  local apfs_mntpt_encfs=""
+  apfs_mntpt_encfs="$(print_volume_mountpoint "${APFS_ENCFS_VOLUME_NAME}" 2> /dev/null)" \
+    || true
+
+  local dmg_mntpt_encfs=""
+  dmg_mntpt_encfs="$(print_disk_image_mountpoint "${DMG_ENCFS_IMAGE_PATH}" 2> /dev/null)" \
+    || true
+
+  # If either encfs not mounted, prompt for passphrase.
+  if ${USE_PREVALENT_PHRASE:-true} && (false \
+    || [ -z "${apfs_mntpt_encfs}" ] \
+    || [ -z "${dmg_mntpt_encfs}" ] \
+    || (! verify_key_paddock_repo_and_home_dir_symlinks \
+        && [ -z "$(print_password_store_key_ids)" ]) \
+  ); then
+
+    # Sets PREVALENT_PHRASE
+    prompt_passphrase
+  fi
+
+  # ***
+
+  local created_fs=false
+
+  # It's unlikely you'll need the case-sensitive, unencrypted volume,
+  # but it'll be there for emergencies (like, if have to work on docs
+  # with case-clashes, that's the only use case that comes to mind).
+  APFS_PERSONALITY="Case-sensitive APFS" \
+  _apfs_mount "${APFS_PLAIN_VOLUME_NAME}" "${apfs_mntpt_plain}" "plain"
+
+  # This mounts (creates as necessary) two encrypted volumes, one APFS,
+  # and one DMG. (There's no reason to have one of each, but the author
+  # is comparing the two for any performance or functional differences.)
+
+  APFS_PERSONALITY="APFS" \
+  _apfs_mount "${APFS_ENCFS_VOLUME_NAME}" "${apfs_mntpt_encfs}" "encfs"
+
+  DMG_FILESYSTEM="APFS" \
+  dmg_mount_encfs "${DMG_ENCFS_IMAGE_PATH}" "${dmg_mntpt_encfs}" "${DMG_ENCFS_IMAGE_SIZE}"
+
+  # ***
+
+  ensure_key_paddock_exists
+
+  ensure_key_paddock_symlinks
+
+  ensure_password_store_admin_entry_exists
+
+  # (Re)load ~/.gnupg/gpg-agent.conf (in case ~/.gnupg was mounted).
+  # - Calls: gpg_reload_agent, ensure_gpg_passphrase_cached
+  # - CXREF: ~/.kit/odd/321open/lib/biblio-gpg
+  gpg_reload_agent_and_recache_passphrase "${gpg_agent_hash:-0}"
+
+  # ***
+
+  unset -v PREVALENT_PHRASE
+
+  # ***
+
+  # (Re)load ~/.gnupg/gpg-agent.conf (in case ~/.gnupg was mounted).
+  # - Calls: gpg_reload_agent, ensure_gpg_passphrase_cached
+  # - CXREF: ~/.kit/odd/321open/lib/biblio-ssh
+  ssh_agent_manage
+
+  # ***
+
+  # Cache GH signing keys (lest you be pestered on every commit)
+  # - CXREF: ~/.kit/odd/321open/lib/biblio-gpg
+  # - CXREF: See 23skidoo complement: gpg_forget_cache
+  #     ~/.kit/odd/321open/bin/23skidoo
+  gpg_preset_git_signing_key
+
+  # ***
+
+  # CXREF: ~/.kit/odd/321open/etc/motd/motd-bbr
+  echo "$(fg_red)$(bg_black)$( \
+    cat "$(dirname -- "$(realpath -- "$0")")/../etc/motd/motd-bbr" \
+    | sed 's/^/  /'
+  )$(attr_reset)"
+
+  if ${created_fs} && [ -n "${USE_PREVALENT_PHRASE:-true}" ]; then
+    # Because user only input new passphrase once.
+    echo
+    echo
+    warn "ALERT: Call \`23skidoo\` then \`321open\` again to verify passphrase"
+    warn "- ALTLY: Run \`hdiutil imageinfo "${DMG_ENCFS_IMAGE_PATH}"\`"
+  fi
+
+  # ***
+
+  clear_traps
+}
+
+# ***
+
+# Only run when executed; no-op when sourced.
+if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
+  main "$@"
+fi
+

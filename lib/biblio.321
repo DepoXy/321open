@@ -1,0 +1,511 @@
+# vim:tw=0:ts=2:sw=2:et:norl:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/321open#👐
+# License: MIT
+
+# Copyright (c) © 2019-2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USAGE: To specify your own APFS volume names and DMG image path,
+#        customize the environs used by _lib321_init_environ_args (below)
+#        in your 321open config:
+#
+#          ~/.config/321open/config
+#
+# - Specifically:
+#
+#     APFS_PLAIN_VOLUME_NAME
+#     APFS_ENCFS_VOLUME_NAME
+#     DMG_ENCFS_IMAGE_NAME
+#     DMG_ENCFS_IMAGE_SIZE
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USAGE: Make an entry for your admin password.
+# - Or unset/set this to empty string to disable.
+ONEOPEN_PASSWORD_STORE_ADMIN="${ONEOPEN_PASSWORD_STORE_ADMIN:-phy/host/$(hostname)/admin}"
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# CXREF: ~/.config/depoxy/321open.cfg
+_321CONF_XDG_PATH="depoxy/321open.cfg"
+
+_biblio321_source_deps () {
+  # Load: error, notice, info, debug, etc., and colors.sh.
+  # - CXREF: ~/.kit/sh/sh-logger/bin/logger.sh
+  #     https://github.com/landonb/sh-logger#🎮🐸
+  # - CXREF: ~/.kit/sh/sh-colors/bin/colors.sh
+  #     https://github.com/landonb/sh-colors#💥
+  source_lib "${SHOILERPLATE:-${HOME}/.kit/sh}" \
+    "sh-logger/bin/logger.sh"
+  LOG_LEVEL=${LOG_LEVEL_DEBUG}
+
+  # Load: apfs_mount, print_apfs_volume_id, print_volume_mountpoint, etc.
+  # - CXREF:~/.kit/odd/321open/deps/macOS-disktools/bin/apfs-mount
+  #     https://github.com/DepoXy/macOS-disktools#⚱️
+  source_lib "${MOSREPOSPATH:-${DOPP_KIT:-${HOME}/.kit}/mOS}" \
+    "macOS-disktools/bin/apfs-mount"
+
+  # Load: dmg_mount, print_disk_image_mountpoint, DMG_IMAGE_SUFFIX, etc.
+  # - CXREF: ~/.kit/odd/321open/deps/macOS-disktools/bin/dmg-mount
+  #     https://github.com/DepoXy/macOS-disktools#⚱️
+  source_lib "${MOSREPOSPATH:-${DOPP_KIT:-${HOME}/.kit}/mOS}" \
+    "macOS-disktools/bin/dmg-mount"
+
+  _321_source_dep_user_config
+
+  _lib321_init_environ_args
+}
+
+# ***
+
+_321_source_dep_user_config () {
+  local xdg_conf="${XDG_CONFIG_HOME:-${HOME}/.config}"
+  local user_conf="${ONEOPEN_CONFIG:-${xdg_conf}/${_321CONF_XDG_PATH}}"
+
+  if [ -f "${user_conf}" ]; then
+    . "${user_conf}"
+  fi
+}
+
+# ***
+
+source_lib () {
+  # For DepoXy users, the project parent directory.
+  local depoxy_basedir="$1"
+  # As fallback, check deps/ which ships with this project.
+  local deps_lib_path="$2"
+
+  local lib_name
+  lib_name="$(basename -- "${deps_lib_path}")"
+
+  if command -v "${lib_name}" > /dev/null && . "${lib_name}" \
+    || . "${depoxy_basedir}/${deps_lib_path}" 2> /dev/null \
+    || . "$(dirname -- "$(realpath -- "$0")")/../deps/${deps_lib_path}" \
+  ; then
+
+    return 0
+  fi
+
+  >&2 echo "ERROR: Cannot determine source path for dependency: ${lib_name}"
+
+  return 1
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_lib321_init_environ_args () {
+  # USAGE: Set `APFS_PLAIN_VOLUME_NAME=` to opt-out.
+  # - Note the sans-colon dash '-', similar to:
+  #     if [ -z ${FOO+x} ]; then FOO=...
+  #   i.e., default to 'artless' if var. unset, otherwise keep
+  #   current value (whether empty string or otherwise).
+  APFS_PLAIN_VOLUME_NAME="${APFS_PLAIN_VOLUME_NAME-artless}"
+
+  # ***
+
+  # USAGE: Set `APFS_ENCFS_VOLUME_NAME=` to opt-out.
+  APFS_ENCFS_VOLUME_NAME="${APFS_ENCFS_VOLUME_NAME-fantasm}"
+
+  # ***
+
+  # Note that this extension is non-negotiable (`hdiutil attach` mounts
+  # disk image as read-only if you rename it without this suffix).
+  DMG_IMAGE_SUFFIX="${DMG_IMAGE_SUFFIX:-.sparseimage}"
+
+  DMG_IMAGE_DATA_DIR="${DMG_IMAGE_DATA_DIR:-${XDG_DATA_HOME:-${HOME}/.local/share}/depoxy/images}"
+
+  # Determine the full image path.
+  # - All ENVIRONS are optional, but overridable.
+
+  # USAGE: Set `DMG_ENCFS_IMAGE_NAME=` to opt-out.
+  if [ -n "${DMG_ENCFS_IMAGE_NAME-x}" ]; then
+    DMG_ENCFS_IMAGE_NAME="${DMG_ENCFS_IMAGE_NAME:-vestige}"
+
+    DMG_ENCFS_IMAGE_PATH="${DMG_ENCFS_IMAGE_PATH:-${DMG_IMAGE_DATA_DIR}/${DMG_ENCFS_IMAGE_NAME}${DMG_IMAGE_SUFFIX}}"
+
+    # Default to 199 MiB disk image.
+    # - This number really depends on your needs.
+    # - If it's just some text docs, like private notes, and SSH,
+    #   GPG, and PWD files, 50m would be more than enough.
+    #   - Four times that is even plentier than enough,
+    #     and isn't so large you'll think twice about it.
+    DMG_ENCFS_IMAGE_SIZE="${DMG_ENCFS_IMAGE_SIZE:-199m}"
+  else
+    unset -v DMG_ENCFS_IMAGE_NAME  # Already true, just saying
+    unset -v DMG_ENCFS_IMAGE_PATH
+  fi
+
+  # ***
+
+  if [ -n "${ONEOPEN_KEYS_PADDOCK-x}" ]; then
+    if [ -n "${DMG_ENCFS_IMAGE_NAME}" ]; then
+      ONEOPEN_KEYS_PADDOCK="${ONEOPEN_KEYS_PADDOCK-/Volumes/${DMG_ENCFS_IMAGE_NAME}/.clench}"
+    elif [ -n "${APFS_ENCFS_VOLUME_NAME}" ]; then
+      ONEOPEN_KEYS_PADDOCK="${ONEOPEN_KEYS_PADDOCK-/Volumes/${APFS_ENCFS_VOLUME_NAME}/.clench}"
+    fi
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Just a silly global to help make the output more beauteous.
+LAST_OUTPUT_LINE_EMPTY=true
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USAGE: Uncomment this not cache the passphrase, or if your
+#        encfs don't share a common passphrase:
+#
+#  USE_PREVALENT_PHRASE=false
+#
+# Or keep the default to be prompted once for your passphrase.
+USE_PREVALENT_PHRASE=${USE_PREVALENT_PHRASE:-true}
+
+# SAVVY/2024-03-18: This feature (the PREVALENT_PHRASE mechanism)
+# uses `gpg --pinentry-mode loopback`, which uses pinentry-program
+# from the config, e.g.,
+#
+#   pinentry-program /usr/bin/pinentry-gnome3  # The preferred default
+#
+# - CXREF: ~/.gnupg/gpg-agent.conf
+#
+# BWARE: Using pinentry-curses (which works over SSH) is not as secure
+# as the GUI popup.
+#
+# - But if you are worried there might be an X keylogger installed that
+#   can sniff its input but that wouldn't be able to capture input to
+#   pinentry-curses, you should probably rethink your whole existence.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# REFER: Using `unset -v`, `set +o allexport`, and `IFS=`,
+#        as recommended by a response to this question:
+# - *What is most secure and simplest way to have a user-typed
+#    password on bash become part of stdin to a program?*
+#   https://unix.stackexchange.com/a/232083
+
+# Ensure variable is not exported
+unset -v PREVALENT_PHRASE
+
+# Ensure variables are not automatically exported
+# (which is already the shell default)
+set +o allexport
+
+PREVALENT_PHRASE=""
+
+# The password `read` command, explained:
+#   IFS= — So read doesn't strip leading and trailing whitespace
+#   -r — Avoid processing backslashes as a quoting character
+#   -s — Silent mode (don't echo input)
+#   -p — To specify a prompt string (on stderr)
+#   < /dev/tty — To only read from the terminal
+# - CALSO: Debian `cryptsetup` has app with same behavior as listed
+#   above, e.g., `apt install cryptsetup`, then:
+#     password=$(/lib/cryptsetup/askpass "What's the password? ")
+prompt_passphrase () {
+  local prompt="Yo! What's your gut tell you? "
+
+  IFS= read -rsp "${prompt}" PREVALENT_PHRASE < /dev/tty \
+    || true
+
+  # The `read` leaves the cursor after the prompt; scrub the
+  # line and reset the cursor.
+  # - Note that read prompts on stderr, so clear stderr
+  #   (this also ensures this function emits nothing on
+  #   stdout, in case the caller is outputing to, e.g.,
+  #   a consuming variable).
+  >&2 printf "\r%s\r" "$(echo "${prompt}" | sed 's/./ /g')"
+
+  # Print a blank line, to separate the prompt from the progress messages.
+  LAST_OUTPUT_LINE_EMPTY=true
+
+  if [ -z "${PREVALENT_PHRASE}" ]; then
+    >&2 echo "ERROR: No passphrase"
+
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Cache sudo credentials.
+# - Use cases: For tomb on Linux; for updating /etc/fstab on macOS.
+# - Note that `sudo -n true` tests if sudo password is cached or not.
+
+# SAVVY: This fcn. not called by `321open`, but by author's private
+# `321open` (to avoid `tomb open` escalation prompt).
+ensure_sudo_credentials_cached () {
+  if sudo -n true 2> /dev/null; then
+    return 0
+  fi
+
+  if [ -z "${PREVALENT_PHRASE}" ] || [ -z "${ONEOPEN_PASSWORD_STORE_ADMIN}" ]; then
+    ensure_sudo_credentials_cached_secure
+  else
+    ensure_sudo_credentials_cached_cached
+  fi
+}
+
+ensure_sudo_credentials_cached_secure () {
+  if sudo -nv 2> /dev/null; then
+
+    return 0
+  fi
+
+  ${LAST_OUTPUT_LINE_EMPTY} || echo
+  echo "Please enter your admin password"
+  echo "================================"
+  sudo -v
+
+  # Erase the previous line, e.g., "[sudo] password for user:".
+  echo -e "\033[F$(echo "[sudo] password for ${LOGNAME}:" | sed 's/./ /g')"
+  LAST_OUTPUT_LINE_EMPTY=true
+}
+
+# SAVVY: If already cached, `sudo -v` is a no-op.
+# SAVVY: If the password is incorrect, `sudo -v` will hang for a
+# moment (while it goes through the "incorrect password attempt"
+# timeouts) before failing.
+ensure_sudo_credentials_cached_cached () {
+  sudo -k
+  # OUTPUT: Ignore the (stderr) prompt that `sudo -v` always shows, e.g.,:
+  #   [sudo] password for user:
+  if ! pass "${ONEOPEN_PASSWORD_STORE_ADMIN}" \
+    | head -1 \
+    | sudo -v --stdin 2> /dev/null \
+  ; then
+    >&2 error "ERROR: Incorrect sudo password / Please fix it:"
+    >&2 error "  pass edit ${ONEOPEN_PASSWORD_STORE_ADMIN}"
+
+    # Rather than fallback on a bare `sudo -v`, user should fix this.
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+ensure_password_store_admin_entry_exists () {
+  if [ -z "${ONEOPEN_PASSWORD_STORE_ADMIN}" ]; then
+    warn "ALERT: Skipping admin pass setup [set ONEOPEN_PASSWORD_STORE_ADMIN to use]"
+
+    return 0
+  fi
+
+  # ***
+
+  local gpg_decrypt_ref=""
+  gpg_decrypt_ref="${HOME}/.password-store/${ONEOPEN_PASSWORD_STORE_ADMIN}.gpg"
+
+  if [ -f "${gpg_decrypt_ref}" ]; then
+
+    return 0
+  fi
+
+  # ***
+
+  local PREVALENT_WORD
+  prompt_password
+
+  # Avoid pinentry `pass` PWD prompt.
+  if [ -n "${PREVALENT_PHRASE}" ]; then
+    ensure_gpg_passphrase_cached_cached
+  fi
+
+  # OUTPUT, e.g.:
+  #   /Users/<id -un>/.password-store/phy
+  #   /Users/<id -un>/.password-store/phy/host
+  #   /Users/<id -un>/.password-store/phy/host/<hostname>
+  #   Enter contents of phy/host/<hostname>/admin and press Ctrl+D when finished:
+  echo -en "${PREVALENT_WORD}\n$(TTT) / @$(hostname) / ${LOGNAME} / ${PREVALENT_WORD}\n" \
+    | pass insert -m "${ONEOPEN_PASSWORD_STORE_ADMIN}" > /dev/null
+
+  notice "Created admin pwd entry: $(highlight "${ONEOPEN_PASSWORD_STORE_ADMIN}")"
+
+  if ! (ensure_sudo_credentials_cached_cached); then
+
+    # Alerted "Incorrect sudo password", but not world-ending.
+    return 0
+  fi
+}
+
+# ***
+
+prompt_password () {
+  local prompt="What's your password? "
+
+  IFS= read -rsp "${prompt}" PREVALENT_WORD < /dev/tty \
+    || true
+
+  # The `read` leaves the cursor after the prompt; move to the next line.
+  #   echo
+  # Or better yet, just scrub the line and reset the cursor.
+  printf "\r%s\r" "$(echo "${prompt}" | sed 's/./ /g')"
+
+  if [ -z "${PREVALENT_WORD}" ]; then
+    >&2 echo "ERROR: No password"
+
+    exit_1
+  fi
+}
+
+# ***
+
+TTT () {
+  local sep="${1:--}";
+
+  echo "$(date "+%Y${sep}%m${sep}%d")"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USYNC: Similar: infuse_symlinks_paddock_home_subdir & infuse_symlinks_paddock_ssh
+#   ~/.kit/odd/321open/lib/biblio-ssh
+infuse_symlinks_paddock_home_subdir () {
+  local home_subdir="$1"
+  local subdir_type="$2"
+
+  if [ -z "${ONEOPEN_KEYS_PADDOCK}" ]; then
+    warn "SKIPD: To hydrate ~/${home_subdir}, set ONEOPEN_KEYS_PADDOCK"
+
+    return 0
+  fi
+
+  local before_cd="$(pwd -L)"
+
+  cd "${HOME}"
+
+  # For cosmetics, prefer relative path from ~/.gnupg to paddock.
+  local relative_path="$( \
+    echo "${ONEOPEN_KEYS_PADDOCK}" \
+    | sed -E "s@^${HOME}/@@"
+  )/${home_subdir}"
+
+  if [ ! -e "${relative_path}" ]; then
+    warn "SKIPD: Cannot hydrate ~/${home_subdir}: No source: $(realpath -- "${relative_path}")"
+  else
+    infuse_symlink_from_home_to_paddock_unless_conflict \
+      "${relative_path}" "${home_subdir}" "${subdir_type}"
+  fi
+
+  cd "${before_cd}"
+}
+
+# ***
+
+remove_symlinks_paddock_home_subdir () {
+  local home_subpath="$1"
+  local subdir_type="$2"
+
+  local target="${HOME}/${home_subpath}"
+
+  if [ -h "${target}" ]; then
+    info "$(fg_lightred)Clobbered$(attr_reset) link:" \
+      "$(fg_lightorange)~/${home_subpath}$(attr_reset)"
+
+    command rm -- "${target}"
+  elif [ ! -e "${home_subpath}" ]; then
+    info "$(fg_lightmagenta)Checked$(attr_reset) absent:" \
+      "$(fg_lightorange)~/${home_subpath}$(attr_reset)"
+  else
+    warn "SKIPD: Not a symlink (won't remove): ~/${home_subpath}"
+  fi
+}
+
+# ***
+
+infuse_symlink_from_home_to_paddock_unless_conflict () {
+  local source_filepath="$1"
+  local target_basename="$2"
+  local secret_type="$3"
+
+  local subdir
+  local tilde_path
+  if [ -d "${source_filepath}" ]; then
+    subdir="$(basename -- "${source_filepath}")"
+    tilde_path="~/${subdir}"
+  elif [ -f "${source_filepath}" ]; then
+    subdir="$(basename -- "$(dirname -- "${source_filepath}")")"
+    tilde_path="~/${subdir}/${target_basename}"
+  else
+    error "GAFFE: Neither directory nor file: ${source_filepath}"
+
+    return 1
+  fi
+
+  warn_conflict () {
+    local what="$1"
+
+    warn "Same-named ${secret_type} ${what} conflicts with source:\n" \
+      "  $(realpath -- "$(pwd -L)/${target_basename}")\n" \
+      "  $(realpath -- "${source_filepath}")"
+  }
+
+  print_type_and_path () {
+    local what="$1"
+
+    printf "%s" "${what}: $(fg_lightorange)${tilde_path}$(attr_reset)"
+  }
+
+  if [ -h "${target_basename}" ]; then
+    # SAVVY: -ef true when checking symlink and its link path.
+    if [ "${target_basename}" -ef "${source_filepath}" ]; then
+      info "$(fg_lightmagenta)Confirmed$(attr_reset) $(print_type_and_path "link")"
+    else
+      warn_conflict "link"
+    fi
+  elif [ -f "${target_basename}" ]; then
+    if diff -q "${target_basename}" "${source_filepath}" > /dev/null; then
+      info "$(fg_lightred)Clobbered$(attr_reset) $(print_type_and_path "file")"
+
+      command rm -- "${target_basename}"
+    else
+      warn_conflict "file"
+    fi
+  elif [ -d "${target_basename}" ]; then
+    # FIXME/2024-06-08 19:49: Is this a GAFFE?
+    warn_conflict "dir."
+  else
+    info "$(fg_lightcyan)Generated$(attr_reset) $(print_type_and_path "link")"
+  fi
+
+  if [ ! -e "${target_basename}" ]; then
+    ln -s -- "${source_filepath}" "${target_basename}"
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+highlight () { printf "%s" "$(fg_skyblue)$1$(attr_reset)"; }
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Use `df` as alternative to `mountpoint`.
+# - Should really just default `df`, works just as well, albeit
+#   more complicated call, but more universal.
+# - Or maybe keep `mountpoint` to suggest that macOS should port
+#   more basic commands, so us devs don't have to craft Big Parse.
+
+is_mountpoint () {
+  local path="$1"
+
+  if command -v mountpoint > /dev/null; then
+    # Linux.
+    mountpoint "${path}" > /dev/null 2>&1
+  else
+    # `df` might fail, e.g., *df: /foo: No such file or directory*
+    local mounted_on
+    mounted_on="$( \
+      df "${path}" 2> /dev/null \
+      | sed -E -ne' s#^.+(%|-) +(/.*$)#\2#p'
+    )"
+
+    test "${mounted_on}" = "$(realpath -- "${path}")"
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_biblio321_source_deps
+

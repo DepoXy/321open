@@ -1,0 +1,198 @@
+# vim:tw=0:ts=2:sw=2:et:norl:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/321open#👐
+# License: MIT
+
+# Copyright (c) © 2019-2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_bibliossh_source_deps () {
+  local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
+
+  # Load: highlight, infuse_symlink_from_home_to_paddock_unless_conflict
+  . "${_321_root}/lib/biblio.321"
+
+  # Load: verify_environment, verify_or_start_agent, ssh_add_key_with_passphrase.
+  # - CXREF: ~/.kit/odd/321open/bin/ssh-agent-kick
+  . "${_321_root}/bin/ssh-agent-kick"
+
+  # Load: ssh_agent_kill
+  # - CXREF: ~/.kit/odd/321open/bin/ssh-agent-kill
+  . "${_321_root}/bin/ssh-agent-kill"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Set to `pass` path to sudo password.
+# - E.g.,
+#  PASS_ROOT_SSH="${PASS_ROOT_SSH:-phy/ssh}"
+PASS_ROOT_SSH="${PASS_ROOT_SSH}"
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# If ssh-agent already running, ssh-agent-kick starts a new instance,
+# but the old instance might still be used by some terminals (and then
+# you'll be prompted for SSH passwords you shouldn't have to enter,
+# e.g., git-commit might fail trying to use your signing key (which
+# doesn't require a password, anyway, so not really sure how exactly
+# it works, just that you want to kill existing ssh-agent tasks first)).
+
+ssh_agent_ssh_agent_kill () {
+  # CXREF: ~/.kit/odd/321open/bin/ssh-agent-kill
+  # ALTLY: "$(dirname -- "$(realpath -- "$0")")/../bin/ssh-agent-kill"
+  ssh_agent_kill
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+ssh_agent_ssh_add_encrypted_keys () {
+  if [ -z "${PASS_ROOT_SSH}" ]; then
+    info "SKIPD: Skipping SSH hydrate [set PASS_ROOT_SSH to use]"
+
+    return 0
+  fi
+
+  # ***
+
+  notice "Add encrypted SSH keys with passphrases"
+
+  # CXREF: ~/.kit/odd/321open/bin/ssh-agent-kick
+  verify_environment
+  verify_or_start_agent
+
+  if [ ! -d "${HOME}/.password-store/${PASS_ROOT_SSH}" ]; then
+    warn "ALERT: Skipping SSH hydrate [add \`pass ${PASS_ROOT_SSH}/<key-name>\` keys to use]"
+
+    return 0
+  fi
+
+  # Loop through ${PASS_ROOT_SSH}/{keyname} pass entries — the {keyname}
+  # is the same as the ~/.ssh/{keyname}, and the first line of
+  # the pass entry is the SSH encryption passphrase.
+  for pass_gpg in $( \
+    command fd -d 1 ".gpg" \
+      "${HOME}/.password-store/${PASS_ROOT_SSH}") \
+  ; do
+    local pass_path="${pass_gpg%.gpg}"
+    local ssh_keyname="$(basename -- "${pass_path}")"
+
+    local ssh_key_path="${HOME}/.ssh/${ssh_keyname}"
+    local passphrase="$(pass "${PASS_ROOT_SSH}/${ssh_keyname}" | head -1)"
+
+    # If this fails, ssh-agent-kick prints errors, and we let
+    # errexit terminate this script.
+    ssh_add_key_with_passphrase "${ssh_key_path}" "${passphrase}"
+
+    info "ssh-add: $(highlight "${ssh_key_path}")"
+  done
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+ssh_agent_manage () {
+  ! ${_321_VERBOSE_BLANKS:-false} || echo
+
+  ssh_agent_ssh_agent_kill
+
+  notice "Add encrypted SSH keys using passphrases from the p-store"
+  ssh_agent_ssh_add_encrypted_keys
+
+  ! ${_321_VERBOSE_BLANKS:-false} || echo
+  notice "Add remaining SSH keys — you may be prompted for any encrypted"
+
+  # CXREF: ~/.kit/odd/321open/bin/ssh-agent-kick
+  # ALTLY: "$(dirname -- "$(realpath -- "$0")")/../bin/ssh-agent-kick"
+  # REFER: Add -v for LOG_LEVEL_VERBOSE messages.
+  #  ssh_agent_kick -v
+  #  ~/.kit/odd/321open/bin/ssh-agent-kick -v
+  ssh_agent_kick
+
+  ! ${_321_VERBOSE_BLANKS:-false} || echo
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# SAVVY: ~/.ssh/authorized_keys and ~/.ssh/known_hosts are not symlinks,
+# so that a remote can connect when the rest of ~/.ssh is offline (e.g.,
+# when the Key Paddock, /Volumes/vestige/.clench, is not yet mounted).
+# - Use case: Your server at home reboots, and you're traveling/offsite,
+#   and you must SSH therein, then `321open` to bring it fully online (so
+#   ~/.ssh/authorized_keys must be present; tho. known_hosts who cares).
+
+# USYNC: Similar: infuse_symlinks_paddock_home_subdir & infuse_symlinks_paddock_ssh
+#   ~/.kit/odd/321open/lib/biblio.321
+infuse_symlinks_paddock_ssh () {
+  if [ -z "${ONEOPEN_KEYS_PADDOCK}" ]; then
+    warn "SKIPD: To hydrate ~/.ssh, set ONEOPEN_KEYS_PADDOCK"
+
+    return 0
+  fi
+
+  # For cosmetics, prefer relative path from ~/.ssh/<file> to paddock.
+  local relative_path
+  relative_path="$( \
+    echo "${ONEOPEN_KEYS_PADDOCK}" \
+    | sed -E "s@^${HOME}/@@"
+  )"
+  if [ "${relative_path}" != "${ONEOPEN_KEYS_PADDOCK}" ]; then
+    # From perspective of ~/.ssh
+    relative_path="../${relative_path}"
+  fi
+  relative_path="${relative_path}/.ssh"
+
+  local before_cd="$(pwd -L)"
+
+  cd "${HOME}/.ssh"
+
+  if [ ! -e "${relative_path}" ]; then
+    warn "SKIPD: Cannot hydrate ~/.ssh: No sources: $(realpath -- "${relative_path}")"
+  else
+    # Meh: (Called on `23skidoo`, but trace message on `321open` looks weird):
+    #  remove_symlinks_paddock_ssh
+
+    local sourcef
+    while IFS= read -r -d '' sourcef; do
+      local sshname="$(basename -- "${sourcef}")"
+
+      # CXREF: ~/.kit/odd/321open/lib/biblio.321
+      infuse_symlink_from_home_to_paddock_unless_conflict \
+        "${sourcef}" "${sshname}" "SSH"
+    done < <( \
+      ( \
+        printf "${relative_path}/config\0" ; \
+        find "${relative_path}" -maxdepth 1 -type f -name "id_*" -print0 ; \
+      ) | sort -z
+    )
+  fi
+
+  cd "${before_cd}"
+}
+
+# ***
+
+remove_symlinks_paddock_ssh () {
+  local home_subpath=".ssh"
+
+  local n_links
+  n_links="$( \
+    find "${HOME}/${home_subpath}" -maxdepth 1 -type l \( -name "id_*" -o -name "config" \) \
+    | wc -l
+  )"
+
+  find "${HOME}/${home_subpath}" -maxdepth 1 -type l \( -name "id_*" -o -name "config" \) \
+    -exec rm -- {} +
+
+  if [ ${n_links} -gt 0 ]; then
+    info "$(fg_lightred)Clobbered$(attr_reset) lnks:" \
+      "$(fg_lightorange)~/${home_subpath}$(attr_reset) (${n_links} total)"
+  else
+    info "$(fg_lightmagenta)Checked$(attr_reset) no lns:" \
+      "$(fg_lightorange)~/${home_subpath}$(attr_reset)"
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_bibliossh_source_deps
+

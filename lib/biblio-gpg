@@ -1,0 +1,433 @@
+# vim:tw=0:ts=2:sw=2:et:norl:ft=bash
+# Author: Landon Bouma <https://tallybark.com/>
+# Project: https://github.com/DepoXy/321open#👐
+# License: MIT
+
+# Copyright (c) © 2019-2024 Landon Bouma. All Rights Reserved.
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USAGE: Make an entry for your admin password.
+# - Or unset/set this to empty string to disable.
+# CXREF: See default in ~/.kit/odd/321open/lib/biblio.321
+# (this declaration is solely informative/documentary).
+ONEOPEN_PASSWORD_STORE_ADMIN="${ONEOPEN_PASSWORD_STORE_ADMIN}"
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# USAGE: To cache your GitHub signing key, customize these environs,
+#        or specify from the config:
+#
+#          ~/.config/depoxy/321open.cfg
+
+# For email <account>@users.noreply.github.com
+#   gpg --with-keygrip -K XXXXXXXX
+GH_SIGNING_KEY_KEYGRIP="${GH_SIGNING_KEY_KEYGRIP:-XXXXXXXXXXXXXXXX}"
+GH_SIGNING_KEY_PASSPTH="${GH_SIGNING_KEY_PASSPTH:-name/of/pass/key}"
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# CXREF/2024-03-18: GPG config file:
+#
+#   ~/.gnupg/gpg-agent.conf
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_bibliogpg_source_deps () {
+  local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
+
+  # Load: highlight, infuse_symlink_from_home_to_paddock_unless_conflict
+  . "${_321_root}/lib/biblio.321"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+PINENTRY_MODE=""
+
+# AVOID/2024-03-18: Uncomment this line to try loopback:
+#
+#  PINENTRY_MODE="--pinentry-mode loopback"
+#
+# but really, if you want a CLI prompt, enable instead
+# the 'pinentry-program /usr/bin/pinentry-curses' setting
+# in ~/.gnupg/gpg-agent.conf
+#
+# - CALSO: The default pinentry mode is "ask", e.g.,
+#     PINENTRY_MODE="--pinentry-mode ask"
+#   which defers to the pinentry prompt (whether CLI or GUI)
+#   as determined by the 'pinentry-program' setting (or
+#   defaults to the GUI prompt if there's no such setting).
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# (Re)load ~/.gnupg/gpg-agent.conf (now that ~/.gnupg is mounted).
+
+gpg_reload_agent () {
+  >&2 gpg_reload_agent_shim
+
+  info "Reloaded GPG agent"
+}
+
+gpg_reload_agent_shim () {
+  # OUTPUT: OK
+  gpg-connect-agent reloadagent /bye 2>&1 >/dev/null \
+    | grep -v "^gpg-connect-agent: no running gpg-agent - starting '" \
+    | grep -v "^gpg-connect-agent: waiting for the agent to come up ... " \
+    | grep -v "^gpg-connect-agent: connection to the agent established$" \
+    || true
+}
+
+# ***
+
+# Unused. Just for show.
+# - CALSO:
+#   gpgconf --kill gpg-agent
+gpg_kill_agent () {
+  gpg-connect-agent killagent /bye > /dev/null
+}
+
+# ***
+
+print_gpg_agent_hash () {
+  local conf_file="${HOME}/.gnupg/gpg-agent.conf"
+
+  if ! [ -f "${conf_file}" ]; then
+    printf "%s" "0"
+
+    return 0
+  fi
+
+  shasum "${conf_file}" | cut -d' ' -f1
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Reset the gpg password cache.
+# - We can restart (or kill) the agent to flush the cache. It really does
+#   not matter which we do, as calling `gpg` again after killing the agent
+#   will restart it on-demand. So we'll restart it, because we just want to
+#   flush the cache, and we don't need to stop the agent.
+#   - If you want to kill the agent, try `gpgconf --kill gpg-agent`.
+# - Note there are at least 3 ways to restart it. I'm not sure if any one
+#   of these is  "preferred" over the others. Perhaps one command works best
+#   across all OSes. But I'm not aware of any functional differences. So I
+#   picked the one with the most brevity (unlike this comment), `gpgconf`.
+#   Also note that only `gpgconf` is silent, so we can avoid `> /dev/null`.
+#     $ gpgconf --reload gpg-agent
+#     $ gpg-connect-agent reloadagent /bye
+#     OK
+#     $ echo RELOADAGENT | gpg-connect-agent
+#     OK
+
+gpg_forget_cache () {
+  gpgconf --reload gpg-agent
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# As seen on @macOS, but not @Linux, is the keyboxd daemon,
+# and it's impervious to killing/reloading gpg-agent.
+#
+# - And it prevents one from unmounting ~/.gnupg, e.g.,
+#
+#   $ hdiutil detach /Volumes/vestige
+#   hdiutil: couldn't unmount "disk5" - Resource busy
+#
+#   $ lsof keyboxd
+#   COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF  NODE
+#     NAME
+#   keyboxd 58838 user    5u   REG   1,25    65536 18407
+#     /Volumes/vestige/.clench/.gnupg/public-keys.d/pubring.db
+#
+# We could `pkill keyboxd`, or go through `gpgconf`.
+
+gpg_kill_keyboxd () {
+  if pgrep keyboxd > /dev/null; then
+    gpgconf --kill keyboxd
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# SAVVY/2024-03-18: Note that `gpg -d` decrypts the specified file
+# and caches the *passphrase*.
+#
+# - ALTLY: This function seems a little bit magical: The passphrase is
+#   cached as a side-effect of the decrypt operation.
+#   - We could instead run a no-op signing command to accomplish the
+#     same caching outcome, e.g.,
+#       echo "1234" | gpg2 --batch --local-user XXXXXXXX -as -
+#   - Note this works with either of the Password Store keys, because
+#     they share the same passphrase. (Which is So Weird! Or maybe it's
+#     the best that GPG can do, i.e., maybe it's not a good idea to cache
+#     the key itself, just the passphrase, and maybe it's not a good idea
+#     to indicate with key goes with which cached passphrase. But, again,
+#     So Weird!)
+
+# SAVVY/2024-03-18: We test the cache using `--pinentry-mode error`.
+# - ALTLY: Or use `--pinentry-mode cancel` (which appears the same).
+
+ensure_gpg_passphrase_cached () {
+  if ! [ -d "${HOME}/.gnupg" ]; then
+    verbose "SKIPD: No ~/.gnupg [ensure_gpg_passphrase_cached]"
+
+    return 0
+  fi
+
+  if ! [ -d "${HOME}/.password-store" ]; then
+    verbose "SKIPD: No ~/.password-store [ensure_gpg_passphrase_cached]"
+
+    return 0
+  fi
+
+  local recipient
+  recipient="$(print_password_store_user_id_name)"
+
+  if [ -z "${recipient}" ]; then
+    warn "ALERT: Skipping GPG passphrase re-cache" \
+      "[set ONEOPEN_PASSWORD_STORE_EMAIL to use, or run \`pass init\`]"
+
+    return 0
+  fi
+
+  # ***
+
+  if probe_if_gpg_passphrase_cached; then
+    # Already cached.
+    debug "GPG passphrase cache detected"
+
+    return 0
+  fi
+
+  # ***
+
+  if [ -z "${PREVALENT_PHRASE}" ]; then
+    ensure_gpg_passphrase_cached_secure
+  else
+    ensure_gpg_passphrase_cached_cached
+  fi
+}
+
+# ***
+
+print_password_store_user_id_name () {
+  local user_id_name="${ONEOPEN_PASSWORD_STORE_EMAIL}"
+
+  # Fallback: ~/.password-store/.gpg-id
+  if [ -z "${user_id_name}" ]; then
+    local pwd_store="${HOME}/.password-store/.gpg-id"
+
+    if [ -f "${pwd_store}" ]; then
+      user_id_name="$(cat -- "${pwd_store}")"
+    fi
+  fi
+
+  printf "%s" "${user_id_name}"
+}
+
+# ***
+
+# Not the NBC radio program from 1953 (I only found one reference online!),
+# nor the 2005 song by The Academy Is... (never heard of it), but from the
+# 2022 SNL skit (i.e., the only "phrase that pays" that the author could
+# locate through search).
+THE_PHRASE_THAT_PAYS="ꫝꪮ𝕥ꫀꪶ ᥴꪖꪶⅈᠻꪮ𝕣ꪀⅈꪖ such a lovely place"
+
+# Silently decrypt meaningless input to see if GPG key passphrase cached.
+probe_if_gpg_passphrase_cached () {
+  local recipient
+  recipient="$(print_password_store_user_id_name)"
+
+  echo "${THE_PHRASE_THAT_PAYS}" \
+    | gpg \
+      -r "${recipient}" \
+      --encrypt \
+    | gpg --pinentry-mode error \
+      --decrypt \
+      > /dev/null 2>&1
+}
+
+ensure_gpg_passphrase_cached_secure () {
+  local recipient
+  recipient="$(print_password_store_user_id_name)"
+
+  local gpg_prompt="Please spill your guts"
+  if ${gpg_prompting_again:-false}; then
+    gpg_prompt="${gpg_prompt} (again)"
+  fi
+
+  echo
+  echo "${gpg_prompt}"
+  echo "${gpg_prompt}" | sed 's/./=/g'
+
+  # ALTLY: You could pick a file to decrypt to seed the cache,
+  # e.g.,
+  #   gpg ${PINENTRY_MODE} \
+  #     -d "${HOME}/.password-store/${ONEOPEN_PASSWORD_STORE_ADMIN}.gpg" \
+  #       > /dev/null 2>&1
+  # But the following in-place encrypt-decrypt requires just the GPG key
+  # exist, and not an actual file.
+
+  echo "${THE_PHRASE_THAT_PAYS}" \
+    | gpg \
+      -r "${recipient}" \
+      --encrypt \
+    | gpg ${PINENTRY_MODE} \
+      --decrypt \
+    > /dev/null 2>&1
+
+  echo
+}
+
+ensure_gpg_passphrase_cached_cached () {
+  local recipient
+  recipient="$(print_password_store_user_id_name)"
+
+  # - `man gpg` says --batch required, but causes gpg to await ^D.
+  # - Note that `gpg --encrypt` does not need the passphrase.
+  # - But for `gpg --decrypt`, seed fd 3 with the passphrase.
+  # - The --decrypt command prints to stderr, e.g.,
+  #     gpg: encrypted with cv25519 key, ID XXXXXXXXXXXXXXXX, created YYYY-MM-DD
+  #           "password-store+<client-id>@<hostname>"
+  #   so we'll ignore stderr and assume it's not important so long as the
+  #   final stdout matches the input.
+  # - An early iteration of this function decrypted a known Password Store
+  #   file, e.g.,
+  #     local gpg_decrypt_ref
+  #     gpg_decrypt_ref="${HOME}/.password-store/${ONEOPEN_PASSWORD_STORE_ADMIN}.gpg"
+  #     printf "%s" "${PREVALENT_PHRASE}" | \
+  #       gpg --passphrase-fd 0 --batch --pinentry-mode loopback \
+  #         -d "${gpg_decrypt_ref}" \
+  #   But (if we get complicated) we can do similar without needing disk file.
+  local output
+  output="$( \
+    exec 3<<< "${PREVALENT_PHRASE}" ; \
+    echo "${THE_PHRASE_THAT_PAYS}" \
+    | gpg \
+      -r "${recipient}" \
+      --encrypt \
+    | gpg --passphrase-fd 3 --pinentry-mode loopback \
+      --decrypt \
+      2> /dev/null
+  )" \
+    || true
+
+  if [ "${output}" != "${THE_PHRASE_THAT_PAYS}" ]; then
+    >&2 error "ERROR: GPG passphrase refresh failed:"
+    >&2 echo "${output}"
+
+    exit_1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+# Preset the GPG signing key, so that `git commit`
+# doesn't prompt you for the signing key passphrase.
+
+# CPYST: For testing/troubleshooting:
+#
+#   $ /usr/lib/gnupg2/gpg-preset-passphrase -c XXXXXX \
+#     <<< $(pass path/to/github-signing-key | head -1)
+#
+#   $ /opt/homebrew/Cellar/gnupg/2.4.5/libexec/gpg-preset-passphrase \
+#     -c XXXXXX <<< $(pass path/to/github-signing-key | head -1)
+
+# SAVVY/2021-08-12: If gpg-preset-passphrase fails, e.g.,
+#     gpg-preset-passphrase: caching passphrase failed: Not supported
+# - Check ~/.gnupg/gpg-agent.conf and confirm set:
+#     allow-preset-passphrase
+# - And maybe reload the agent:
+#     gpg-connect-agent reloadagent /bye
+# - Note this script calls gpg_reload_agent so this should not fail.
+
+gpg_preset_git_signing_key () {
+  if [ -z "${GH_SIGNING_KEY_KEYGRIP//X/}" ]; then
+    # GH_SIGNING_KEY_KEYGRIP is still default "XXX"... value,
+    # i.e., user has not enabled this mechanism.
+    warn "ALERT: Skipping preset GH signing key [set GH_SIGNING_KEY_KEYGRIP to use]"
+
+    return 0
+  fi
+
+  local gpresetp
+  gpresetp="$(print_gpg_preset_passphrase_path)" \
+    || return 1
+
+  if ! ${gpresetp} -c ${GH_SIGNING_KEY_KEYGRIP} \
+    <<< $(pass "${GH_SIGNING_KEY_PASSPTH}" | head -1) \
+    2> /dev/null \
+  ; then
+    >&2 echo "ERROR: gpg-preset-passphrase failed:"
+
+    ${gpresetp} -c ${GH_SIGNING_KEY_KEYGRIP} \
+      <<< $(pass "${GH_SIGNING_KEY_PASSPTH}" | head -1) \
+      2>&1 | >&2 sed 's/^/  /'
+
+    exit_1
+  fi
+
+  info "Preset Git sig: $(highlight "${GH_SIGNING_KEY_KEYGRIP}")"
+}
+
+# ***
+
+print_gpg_preset_passphrase_path () {
+  local gpresetp
+  gpresetp="/usr/lib/gnupg2/gpg-preset-passphrase"
+
+  # Check Homebrew if not found.
+  if [ ! -x "${gpresetp}" ]; then
+    # Aka ${HOMEBREW_PREFIX}
+    local brew_home="/opt/homebrew"
+    # Otherwise on Intel Macs it's under /usr/local.
+    [ -d "${brew_home}" ] || brew_home="/usr/local"
+
+    # Use version-proof symlink, e.g.,
+    #   /opt/homebrew/opt/gnupg -> ../Cellar/gnupg/2.4.5/
+    # REFER: /opt/homebrew/opt/gnupg/libexec/gpg-preset-passphrase
+    # - E.g., /opt/homebrew/Cellar/gnupg/2.4.5/libexec/gpg-preset-passphrase
+    gpresetp="${brew_home}/opt/gnupg/libexec/gpg-preset-passphrase"
+  fi
+
+  if [ -x "${gpresetp}" ]; then
+    printf "%s" "${gpresetp}"
+  else
+    >&2 echo "ERROR: Cannot locate ‘gpg-preset-passphrase’"
+
+    return 1
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+gpg_reload_agent_and_recache_passphrase () {
+  local gpg_agent_hash="$1"
+
+  # (Re)load ~/.gnupg/gpg-agent.conf if it changed (e.g.,
+  # ~/.gnupg is symlink to something we just mounted).
+  if [ "${gpg_agent_hash}" != "$(print_gpg_agent_hash)" ]; then
+    gpg_reload_agent
+
+    # SAVVY: GPG cache was cleared on gpg_reload_agent. Rehydrate the
+    # cache, so the passphrase is ready for the remaining calls.
+    ensure_gpg_passphrase_cached
+  fi
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+infuse_symlinks_paddock_gpg () {
+  infuse_symlinks_paddock_home_subdir ".gnupg" "GPG"
+}
+
+# ***
+
+remove_symlinks_paddock_gpg () {
+  remove_symlinks_paddock_home_subdir ".gnupg" "GPG"
+}
+
+# +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_bibliogpg_source_deps
+
