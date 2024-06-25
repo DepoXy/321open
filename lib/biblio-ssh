@@ -152,18 +152,18 @@ infuse_symlinks_paddock_ssh () {
     #  remove_symlinks_paddock_ssh
 
     local sourcef
-    while IFS= read -r -d '' sourcef; do
+
+    ( \
+      printf "${relative_path}/config\0" ; \
+      find "${relative_path}" -maxdepth 1 -type f -name "id_*" -print0 ; \
+    ) | sort -z \
+    | while IFS= read -r -d '' sourcef; do
       local sshname="$(basename -- "${sourcef}")"
 
       # CXREF: ~/.kit/odd/321open/lib/biblio.321
       infuse_symlink_from_home_to_paddock_unless_conflict \
         "${sourcef}" "${sshname}" "SSH"
-    done < <( \
-      ( \
-        printf "${relative_path}/config\0" ; \
-        find "${relative_path}" -maxdepth 1 -type f -name "id_*" -print0 ; \
-      ) | sort -z
-    )
+    done
   fi
 
   cd "${before_cd}"
