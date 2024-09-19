@@ -134,22 +134,47 @@ inhibit_auto_mount () {
 
   raise="sudo " sudo_preflight
 
-  # If created, /etc/fstab assigned 644 permissions, owned by root.
-  sudo bash -c "
-    # Load: logger.sh, and colors.sh, for line_in_file.
-    # CXREF: ~/.kit/sh/sh-logger/bin/logger.sh
-    . \"${SHOILERPLATE:-${HOME}/.kit/sh}/sh-logger/bin/logger.sh\"
-    LOG_LEVEL=${LOG_LEVEL_WARN}
-
-    # Load: line_in_file
-    # CXREF: ~/.kit/git/ohmyrepos/lib/line-in-file.sh
-    . \"${OHMYREPOS_LIB:-${GITREPOSPATH:-${HOME}/.kit/git}/ohmyrepos/lib}/line-in-file.sh\"
-
-    line_in_file \"UUID=${volume_uuid} none auto noauto\" \"/etc/fstab\"
-  "
+  # If created, /etc/fstab assigned 644 permissions (assuming umask 0002), owned by root.
+  OMR_BECOME=sudo append_line_unless_exists "/etc/fstab" "UUID=${volume_uuid} none auto noauto"
 
   if ${VERBOSE:-false}; then
     echo "Updated /etc/fstab to set noauto"
+  fi
+}
+
+# ***
+
+# FIXME/2024-09-19: Add ohmyrepos/lib/line-in-file.sh to deps/
+# - In the meantime, the following (non-DRY) copy.
+
+# COPYD: ~/.kit/git/ohmyrepos/lib/line-in-file.sh
+#   https://github.com/landonb/ohmyrepos#😤
+append_line_unless_exists () {
+  local path="$1"
+  local line="$2"
+
+  if [ -z "${path}" ] || [ -z "${line}" ]; then
+    >&2 echo "GAFFE: Missing line and/or path"
+
+    return 1
+  fi
+
+  local friendly_path="$( \
+    echo "${path}" | sed -E "s@^${HOME}(/|$)@~\1@"
+  )"
+
+  # SAVVY: -q quiet, -x match the whole line, -F pattern is a plain string
+  if [ -f "${path}" ] && grep -qxF "${line}" "${path}"; then
+    info "Verified $(fg_lightorange)${friendly_path}$(attr_reset)"
+  else
+    if [ ! -e "${path}" ]; then
+      info "Creating $(fg_lightorange)${friendly_path}$(attr_reset)"
+    else
+      info "Updating $(fg_lightorange)${friendly_path}$(attr_reset)"
+    fi
+
+    # Assigns permissions per umask, e.g., 644 when umask is `0002`.
+    echo "${line}" | ${OMR_BECOME} tee -a "${path}" > /dev/null
   fi
 }
 
