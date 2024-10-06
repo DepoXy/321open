@@ -352,6 +352,11 @@ prompt_password () {
 
 # ***
 
+# Prints today's date in ISO format, e.g., "2020-09-16".
+# - Optional argument specifies a different separator.
+# HSTRY: The `TTT` command is a Homefries shell function.
+# COPYD: ~/.kit/sh/home-fries/lib/datetime_now_TTT.sh
+#   https://github.com/landonb/home-fries#🍟
 TTT () {
   local sep="${1:--}";
 
