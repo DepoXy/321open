@@ -97,7 +97,8 @@ create_key_paddock_repo () {
 
   relocate_keys_paddock_dirs
 
-  ensure_keys_paddock_password_store
+  ensure_keys_paddock_password_store \
+    || return 1
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
