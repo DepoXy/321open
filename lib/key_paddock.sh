@@ -25,11 +25,14 @@ _keypaddock_source_deps () {
 
 ensure_key_paddock_exists () {
   if verify_key_paddock_repo_and_home_dir_symlinks; then
+    ensure_key_paddock_ssh_permissions
 
     return 0
   fi
 
   if ( create_key_paddock_repo "${ONEOPEN_KEYS_PADDOCK}" ); then
+    ensure_key_paddock_ssh_permissions
+
     notice "Keys paddocked: $(highlight "${ONEOPEN_KEYS_PADDOCK}")"
   else
     warn "ALERT: Paddock unfinished: $(highlight "${ONEOPEN_KEYS_PADDOCK}")"
@@ -55,6 +58,20 @@ verify_key_paddock_repo_and_home_dir_symlinks () {
   fi
 
   return 1
+}
+
+ensure_key_paddock_ssh_permissions () {
+  ( ensure_key_paddock_ssh_permissions_with_cd )
+}
+
+ensure_key_paddock_ssh_permissions_with_cd () {
+  cd "${ONEOPEN_KEYS_PADDOCK}"
+
+  chmod 2750 .ssh/
+  chmod 640 .ssh/authorized_keys*
+  chmod 600 .ssh/config*
+  chmod 400 .ssh/id_*
+  chmod 440 .ssh/id_*.pub
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
