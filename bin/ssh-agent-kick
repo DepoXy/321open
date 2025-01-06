@@ -54,26 +54,10 @@ SSH_AGENT_KICK_NONINTERACTIVE=${SSH_AGENT_KICK_NONINTERACTIVE:-false}
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-check_dep () {
-  if ! command -v $1 > /dev/null 2>&1; then
-    >&2 printf '\r%s\n' "WARNING: Missing dependency: ‘$1’"
-
-    false
-  else
-    true
-  fi
-}
-
-check_deps () {
-  # Verify `expect` installed (On Linux/Debian: from
-  # package of same name; On macOS: comes stock).
-  check_dep 'expect' || exit 1
-}
-
 source_deps () {
   local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
 
-  # Load: highlight
+  # Load: check_dep, highlight
   . "${_321_root}/lib/biblio.321"
 
   # CXREF: Console log helpers, `info`, `warn`, `error`, etc.:
@@ -86,6 +70,11 @@ source_deps () {
   # CXREF: Timing helper, `print_nanos_now`:
   #   https://github.com/landonb/sh-print-nanos-now#⏱️
   . "${_321_root}/deps/sh-print-nanos-now/bin/print-nanos-now.sh"
+}
+
+check_deps () {
+  # On Linux/Debian: try `apt install expect`. On macOS: comes stock.
+  check_dep 'expect' || exit 1
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
@@ -574,9 +563,9 @@ ssh_agent_kick () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-check_deps
-
 source_deps
+
+check_deps
 
 # ***
 
