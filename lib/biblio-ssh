@@ -99,7 +99,8 @@ ssh_agent_manage () {
   ssh_agent_ssh_add_encrypted_keys
 
   ! ${_321_VERBOSE_BLANKS:-false} || echo
-  notice "Add remaining SSH keys — you may be prompted for any encrypted"
+  notice "Add remaining SSH keys"
+  notice "— You may be prompted for keys without p-store passphrases"
 
   # CXREF: ~/.kit/odd/321open/bin/ssh-agent-kick
   # ALTLY: "$(dirname -- "$(realpath -- "$0")")/../bin/ssh-agent-kick"
