@@ -8,7 +8,7 @@
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-source_deps () {
+_ssh_agent_kill_source_deps () {
   local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
 
   # Load: highlight
@@ -81,7 +81,7 @@ _sak_shell_sourced () { [ "$(basename -- "$0")" != "${_sak_this_file_name}" ]; }
 _sak_bash_sourced () { declare -p FUNCNAME > /dev/null 2>&1; }
 
 if ! _sak_shell_sourced; then
-  source_deps
+  _ssh_agent_kill_source_deps
   ssh_agent_kill "$@"
 else
   _sak_bash_sourced && export -f ssh_agent_kill

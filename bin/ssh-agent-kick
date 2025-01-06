@@ -54,7 +54,7 @@ SSH_AGENT_KICK_NONINTERACTIVE=${SSH_AGENT_KICK_NONINTERACTIVE:-false}
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-source_deps () {
+_ssh_agent_kick_source_deps () {
   local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
 
   # Load: check_dep, highlight
@@ -72,7 +72,7 @@ source_deps () {
   . "${_321_root}/deps/sh-print-nanos-now/bin/print-nanos-now.sh"
 }
 
-check_deps () {
+_ssh_agent_kick_check_deps () {
   # On Linux/Debian: try `apt install expect`. On macOS: comes stock.
   check_dep 'expect' || exit 1
 }
@@ -563,9 +563,9 @@ ssh_agent_kick () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-source_deps
+_ssh_agent_kick_source_deps
 
-check_deps
+_ssh_agent_kick_check_deps
 
 # ***
 
