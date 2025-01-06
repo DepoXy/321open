@@ -98,7 +98,7 @@ source_lib () {
 # USAGE: For callers to use, e.g., `check_dep 'expect' || exit 1`.
 check_dep () {
   if ! command -v $1 > /dev/null 2>&1; then
-    >&2 printf '\r%s\n' "WARNING: Missing dependency: ‘$1’"
+    >&2 printf '\r%s\n' "ERROR: Missing dependency: ‘$1’"
 
     false
   else
