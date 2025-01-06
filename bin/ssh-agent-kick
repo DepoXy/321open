@@ -65,7 +65,8 @@ check_dep () {
 }
 
 check_deps () {
-  # Verify sh-logger/bin/logger.sh loaded.
+  # Verify `expect` installed (On Linux/Debian: from
+  # package of same name; On macOS: comes stock).
   check_dep 'expect' || exit 1
 }
 
