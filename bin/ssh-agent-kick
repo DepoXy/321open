@@ -569,26 +569,19 @@ _ssh_agent_kick_check_deps
 
 # ***
 
-shell_sourced () {
-  # 2020-03-27: Meh. I created an ssh-kick-agent alias, because I kept
-  # typing ssh-k<TAB>, but then I realized I only need to call this
-  # function from another command I used to load encrypted mounts. So I
-  # removed the symlink.
-  # - Nonetheless, this checks if $0 is either of these 2 filenames:
-  for filename in "ssh-agent-kick" "ssh-kick-agent"; do
-    [ "$(basename -- "$0")" = "${filename}" ] && return 1
-  done
-  true
-}
-# Note that bash_sourced only meaningful if shell_sourced is true.
-bash_sourced () { declare -p FUNCNAME > /dev/null 2>&1; }
+_sakk_this_file_name="ssh-agent-kick"
+_sakk_shell_sourced () { [ "$(basename -- "$0")" != "${_sak_this_file_name}" ]; }
+# Note that _sakk_bash_sourced only meaningful if _sakk_shell_sourced is true.
+_sakk_bash_sourced () { declare -p FUNCNAME > /dev/null 2>&1; }
 
-if ! shell_sourced; then
+}
+
+if ! _sakk_shell_sourced; then
   ssh_agent_kick "$@"
 else
-  bash_sourced && export -f ssh_agent_kick
-  unset -v this_file_name
-  unset -f shell_sourced
-  unset -f bash_sourced
+  _sakk_bash_sourced && export -f ssh_agent_kick
+  unset -v _sakk_this_file_name
+  unset -f _sakk_shell_sourced
+  unset -f _sakk_bash_sourced
 fi
 
