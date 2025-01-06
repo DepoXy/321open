@@ -74,7 +74,7 @@ _ssh_agent_kick_source_deps () {
 
 _ssh_agent_kick_check_deps () {
   # On Linux/Debian: try `apt install expect`. On macOS: comes stock.
-  check_dep 'expect' || exit 1
+  check_dep 'expect' || exit_1
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
@@ -205,7 +205,7 @@ ssh_agent_has_key () {
     >&2 error "ERROR: Cannot determine fingerprint: ${ssh_key_path}"
 
     # Caller already checked that the key exists, so this is unexpected.
-    exit 1
+    exit_1
   fi
 
   # DUNNO/2024-03-19: Usually, `ssh-add -l` uses the key name from the
@@ -415,7 +415,7 @@ mate_session_agent_pid_verify () {
     #   wait until you see this warning to know what to do.
     error "I don't know how to proceed!"
 
-    exit 1
+    exit_1
   fi
 
   return 0
@@ -506,13 +506,13 @@ verify_or_start_agent () {
     if [ ! -f "${_321OPEN_SSH_ENV}" ]; then
       error "ssh-agent running but we don't have its environs: try \`ssh-agent -k\`"
 
-      exit 1
+      exit_1
     fi
     . "${_321OPEN_SSH_ENV}" > /dev/null
     if ! is_running_pid; then
       error "ssh-agent running but environs file is outdated: try \`ssh-agent -k\`"
 
-      exit 1
+      exit_1
     fi
     ${_LOG_NAME_SAK:-info} "Solo ssh-agent agent found via our ssh environs file"
     max_agents=1
@@ -525,13 +525,13 @@ verify_or_start_agent () {
     ps_ssh_agent_all | wc -l
     ps_ssh_agent_all
 
-    exit 1
+    exit_1
   fi
 
   if [ ${max_agents} -gt 0 ] && ! is_socketed; then
     error "Missing socket: Nothing found at SSH_AUTH_SOCK: ‘${SSH_AUTH_SOCK}’"
 
-    exit 1
+    exit_1
   fi
 
   if [ ${max_agents} -eq 0 ]; then
@@ -574,14 +574,24 @@ _sakk_shell_sourced () { [ "$(basename -- "$0")" != "${_sak_this_file_name}" ]; 
 # Note that _sakk_bash_sourced only meaningful if _sakk_shell_sourced is true.
 _sakk_bash_sourced () { declare -p FUNCNAME > /dev/null 2>&1; }
 
+_sakk_main () {
+  set -e
+
+  # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
+  . "$(dirname -- "$(realpath -- "$0")")/../deps/sh-err-trap/lib/err-trap.sh"
+
+  set_traps
+
+  ssh_agent_kick "$@"
 }
 
 if ! _sakk_shell_sourced; then
-  ssh_agent_kick "$@"
+  _sakk_main "$@"
 else
   _sakk_bash_sourced && export -f ssh_agent_kick
   unset -v _sakk_this_file_name
   unset -f _sakk_shell_sourced
   unset -f _sakk_bash_sourced
+  unset -f _sakk_main
 fi
 
