@@ -327,7 +327,7 @@ ssh_add_key_with_passphrase () {
 
   local response
   response="$( \
-    /usr/bin/expect -c " \
+    command expect -c " \
       spawn /usr/bin/ssh-add ${ssh_key_path}; \
       expect \"Enter passphrase for ${ssh_key_path}:\"; \
       send \"${passphrase}\n\"; \
