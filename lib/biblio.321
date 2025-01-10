@@ -31,68 +31,132 @@ ONEOPEN_PASSWORD_STORE_ADMIN="${ONEOPEN_PASSWORD_STORE_ADMIN:-phy/host/$(hostnam
 # CXREF: ~/.config/depoxy/321open.cfg
 _321CONF_XDG_PATH="depoxy/321open.cfg"
 
-_biblio321_source_deps () {
+# *** <beg boilerplate `source_deps`: ------------------------------|
+#                                                                   |
+
+_biblio_321__this_filename="biblio.321"
+
+_biblio_321__source_deps () {
+  local sourced_all=true
+
+  # On Bash, user can source this file from anywhere.
+  # - If not Bash, user must `cd` to this file's parent directory first.
+  local prefix="$(dirname -- "${_biblio_321__this_fullpath}")"
+
+  # USAGE: Load dependencies using path relative to this file, e.g.:
+  #   _source_file "${prefix}" "../deps/path/to/lib" "dependency.sh"
+
+  #                                                                 |
+  # *** stop boilerplate> ------------------------------------------|
+
   # Load: error, notice, info, debug, etc., and colors.sh.
   # - CXREF: ~/.kit/sh/sh-logger/bin/logger.sh
   #     https://github.com/landonb/sh-logger#🎮🐸
   # - CXREF: ~/.kit/sh/sh-colors/bin/colors.sh
   #     https://github.com/landonb/sh-colors#💥
-  source_lib "${SHOILERPLATE:-${HOME}/.kit/sh}" \
-    "sh-logger/bin/logger.sh"
+  _biblio_321__source_file "${prefix}" "../deps/sh-logger/bin" "logger.sh"
   LOG_LEVEL=${LOG_LEVEL_DEBUG}
 
   # Load: apfs_mount, print_apfs_volume_id, print_volume_mountpoint, etc.
   # - CXREF:~/.kit/odd/321open/deps/macOS-disktools/bin/apfs-mount
   #     https://github.com/DepoXy/macOS-disktools#⚱️
-  source_lib "${MOSREPOSPATH:-${DOPP_KIT:-${HOME}/.kit}/mOS}" \
-    "macOS-disktools/bin/apfs-mount"
+  _biblio_321__source_file "${prefix}" "../deps/macOS-disktools/bin" "apfs-mount"
 
   # Load: dmg_mount, print_disk_image_mountpoint, DMG_IMAGE_SUFFIX, etc.
   # - CXREF: ~/.kit/odd/321open/deps/macOS-disktools/bin/dmg-mount
   #     https://github.com/DepoXy/macOS-disktools#⚱️
-  source_lib "${MOSREPOSPATH:-${DOPP_KIT:-${HOME}/.kit}/mOS}" \
-    "macOS-disktools/bin/dmg-mount"
+  _biblio_321__source_file "${prefix}" "../deps/macOS-disktools/bin" "dmg-mount"
 
-  _321_source_dep_user_config
+  # *** <more boilerplate: -----------------------------------------|
+  #                                                                 |
 
-  _lib321_init_environ_args
+  ${sourced_all}
 }
 
-# ***
+_biblio_321__smells_like_bash () { declare -p BASH_SOURCE > /dev/null 2>&1; }
 
-_321_source_dep_user_config () {
-  local xdg_conf="${XDG_CONFIG_HOME:-${HOME}/.config}"
-  local user_conf="${ONEOPEN_CONFIG:-${xdg_conf}/${_321CONF_XDG_PATH}}"
-
-  if [ -f "${user_conf}" ]; then
-    . "${user_conf}"
+_biblio_321__print_this_fullpath () {
+  if _biblio_321__smells_like_bash; then
+    echo "$(realpath -- "${BASH_SOURCE[0]}")"
+  elif [ "$(basename -- "$0")" = "${_biblio_321__this_filename}" ]; then
+    # Assumes this script being executed, and $0 is its path.
+    echo "$(realpath -- "$0")"
+  else
+    # Assumes cwd is this script's parent directory.
+    echo "$(realpath -- "${_biblio_321__this_filename}")"
   fi
 }
 
-# ***
+_biblio_321__this_fullpath="$(_biblio_321__print_this_fullpath)"
 
-source_lib () {
-  # For DepoXy users, the project parent directory.
-  local depoxy_basedir="$1"
-  # As fallback, check deps/ which ships with this project.
-  local deps_lib_path="$2"
-
-  local lib_name
-  lib_name="$(basename -- "${deps_lib_path}")"
-
-  if . "${depoxy_basedir}/${deps_lib_path}" 2> /dev/null \
-    || . "$(dirname -- "$(realpath -- "$0")")/../deps/${deps_lib_path}" \
-  ; then
-
-    return 0
-  fi
-
-  >&2 echo "ERROR: Cannot determine source path for dependency: ${lib_name}"
-
-  return 1
+_biblio_321__shell_sourced () {
+  [ "$(realpath -- "$0")" != "${_biblio_321__this_fullpath}" ]
 }
 
-# ***
+_biblio_321__source_file () {
+  local prfx="${1:-.}"
+  local depd="${2:-.}"
+  local file="${3:-.}"
+
+  local deps_dir="${prfx}/${depd}"
+  local deps_path="${deps_dir}/${file}"
+
+  # Just in case sourced file overwrites top-level `_biblio_321__this_filename`,
+  # cache our copy, should we need it for an error message.
+  local _this_file_name="${_biblio_321__this_filename}"
+
+  if [ -f "${deps_path}" ]; then
+    # SAVVY: Source files from their dirs, so they can find their deps.
+    local before_cd="$(pwd -L)"
+    cd "${deps_dir}"
+    # SAVVY: If errexit, error while sourcing kills process immediately,
+    # and error you see might indicate this source file, but the line
+    # number for the file being sourced. E.g.,
+    #   /path/to/bin/myapp: 442: export: Illegal option -f
+    # where `442` is line number from, e.g., 'deps/lib/dep.sh'.
+    if ! . "${deps_path}"; then
+      >&2 echo "ERROR: Dependency ‘${file}’ returned nonzero when sourced"
+      sourced_all=false
+    fi
+    cd "${before_cd}"
+  else
+    local depstxt=""
+    [ "${prfx}" = "." ] || depstxt="in ‘${deps_dir}’ or "
+    >&2 echo "ERROR: ‘${file}’ not found under ‘${deps_dir}’"
+    if _biblio_321__smells_like_bash; then
+      >&2 echo "- GAFFE: This looks like an error with the ‘_biblio_321__source_file’ arguments"
+    else
+      >&2 echo "- HINT: You must source ‘${_this_file_name}’ from its parent directory"
+    fi
+    sourced_all=false
+  fi
+}
+
+# BONUS: You can use these aliases instead of the uniquely-named functions,
+# just be aware not to call any alias after calling _source_deps.
+_shell_sourced () { _biblio_321__shell_sourced; }
+_source_deps () { _biblio_321__source_deps; }
+
+_biblio_321__source_deps_unset_cleanup () {
+  unset -v _biblio_321__this_filename
+  unset -f _biblio_321__print_this_fullpath
+  unset -f _biblio_321__shell_sourced
+  unset -f _shell_sourced
+  unset -f _biblio_321__smells_like_bash
+  unset -f _biblio_321__source_deps
+  unset -f _source_deps
+  unset -f _biblio_321__source_deps_unset_cleanup
+  unset -f _biblio_321__source_file
+}
+
+# USAGE: When this file is being executed, before doing stuff, call:
+#   _source_deps
+# - When this file is being sourced, call both:
+#   _source_deps
+#   _biblio_321__source_deps_unset_cleanup
+
+#                                                                   |
+# *** end boilerplate `source_deps`> -------------------------------|
 
 # USAGE: For callers to use, e.g., `check_dep 'expect' || exit 1`.
 check_dep () {
@@ -106,6 +170,24 @@ check_dep () {
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
+
+_biblio321_source_user_config_and_init_environs () {
+  _321_source_dep_user_config
+
+  _lib321_init_environ_args
+}
+
+# ***
+
+_321_source_dep_user_config () {
+  local xdg_conf="${XDG_CONFIG_HOME:-${HOME}/.config}"
+  local user_conf="${ONEOPEN_CONFIG:-${xdg_conf}/${_321CONF_XDG_PATH}}"
+
+  if [ -f "${user_conf}" ]; then
+    # BWARE: Sourcing a user file...
+    . "${user_conf}"
+  fi
+}
 
 _lib321_init_environ_args () {
   # USAGE: Set `APFS_PLAIN_VOLUME_NAME=` to opt-out.
@@ -524,5 +606,7 @@ is_mountpoint () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_biblio321_source_deps
+_source_deps
+
+_biblio321_source_user_config_and_init_environs
 
