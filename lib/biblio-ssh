@@ -172,11 +172,14 @@ ssh_agent_ssh_add_encrypted_keys () {
     return 0
   fi
 
+  local fd
+  fd="$(command -v fd || command -v fdfind)"
+
   # Loop through ${PASS_ROOT_SSH}/{keyname} pass entries — the {keyname}
   # is the same as the ~/.ssh/{keyname}, and the first line of
   # the pass entry is the SSH encryption passphrase.
   for pass_gpg in $( \
-    command fd -d 1 ".gpg" \
+    command ${fd} -d 1 ".gpg" \
       "${HOME}/.password-store/${PASS_ROOT_SSH}") \
   ; do
     local pass_path="${pass_gpg%.gpg}"
