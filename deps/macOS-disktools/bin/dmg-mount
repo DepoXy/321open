@@ -467,7 +467,10 @@ print_image_path_canonicalize_missing () {
 # ***
 
 gnu_readlink () {
-  command -v greadlink || command -v readlink
+  for cmd in "greadlink" "readlink"; do
+    ( unset -f ${cmd}; unalias ${cmd}; command -v ${cmd} ) 2> /dev/null \
+      && break
+  done
 }
 
 # ***
