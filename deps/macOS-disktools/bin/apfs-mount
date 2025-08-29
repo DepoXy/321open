@@ -12,17 +12,25 @@
 #
 #   man diskutil
 #   diskutil list
-#   diskutil apfs deleteVolume <device>  # Not plumbed below. 
+#   diskutil apfs deleteVolume <device>  # Not plumbed below.
 #
 # CALSO: hdiutil, which can make a tomb-like encrypted file system
 # using encrypted file(s) on disk (e.g., if you wanted to be able
 # to backup the encrypted sources themselves, which I'm not sure
 # you can do with an encrypted (or any) APFS Container or Volume).
 
+# SAVVY: APFS are dynamic volumes. / From `man diskutil`:
+#   APFS Volumes have no specified "size" (capacity). Instead, all
+#   APFS Volumes consume capacity out of the remaining free space of their
+#   parent APFS Container, consuming or returning such capacity as user file
+#   data is added or deleted. Note that this means that all Volumes within a
+#   Container compete for the Container's remaining capacity. However, you can
+#   manage Volume allocation with the optional reserve and quota size values.
+
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_apfsmount_source_deps () {
-  if ! os_is_macos || ! command -v diskutil > /dev/null; then
+_apfsmount_source_deps() {
+  if ! os_is_macos || ! command -v diskutil >/dev/null; then
     >&2 echo "ERROR: Requires @macOS"
 
     exit_1
@@ -31,7 +39,7 @@ _apfsmount_source_deps () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-apfs_mount () {
+apfs_mount() {
   # Script vars set by `_apfsmount_process_args`
   local do_create=false
   local do_unmount=false
@@ -80,13 +88,13 @@ APFS_PERSONALITY="${APFS_PERSONALITY:-APFS}"
 
 # ***
 
-create_volume () {
+create_volume() {
   local volume_name="${1:-${volume_name}}"
 
   # E.g., 'disk3s7'
   local device
-  device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)" \
-    || true
+  device="$(print_apfs_volume_id "${volume_name}" 2>/dev/null)" ||
+    true
 
   if [ -n "${device}" ]; then
     echo "Already exists: /dev/${device}"
@@ -95,13 +103,13 @@ create_volume () {
   fi
 
   # E.g., 'disk3'
-  device="$(print_apfs_container_id)" \
-    || exit_1
+  device="$(print_apfs_container_id)" ||
+    exit_1
 
   local device_name="/dev/${device}"
 
   local cmd
-  cmd="$( \
+  cmd="$(
     echo "diskutil apfs addVolume" \
       "${device_name}" \
       "\"${APFS_PERSONALITY}\"" \
@@ -120,13 +128,13 @@ create_volume () {
 # THANX: https://apple.stackexchange.com/questions/404936/
 #   prevent-encrypted-apfs-volume-on-partition-to-automount-ask-for-password-on-lo[gin]
 
-inhibit_auto_mount () {
+inhibit_auto_mount() {
   local volume_name="${1:-${volume_name}}"
 
   # E.g., 'disk3s7'
   local volume_label
-  volume_label="$(print_apfs_volume_id "${volume_name}")" \
-    || exit_1
+  volume_label="$(print_apfs_volume_id "${volume_name}")" ||
+    exit_1
 
   # Or `diskutil info /dev/${volume_label}`
   local volume_uuid
@@ -149,7 +157,7 @@ inhibit_auto_mount () {
 
 # COPYD: ~/.kit/git/ohmyrepos/lib/line-in-file.sh
 #   https://github.com/landonb/ohmyrepos#😤
-append_line_unless_exists () {
+append_line_unless_exists() {
   local path="$1"
   local line="$2"
 
@@ -159,7 +167,7 @@ append_line_unless_exists () {
     return 1
   fi
 
-  local friendly_path="$( \
+  local friendly_path="$(
     echo "${path}" | sed -E "s@^${HOME}(/|$)@~\1@"
   )"
 
@@ -174,13 +182,13 @@ append_line_unless_exists () {
     fi
 
     # Assigns permissions per umask, e.g., 644 when umask is `0002`.
-    echo "${line}" | ${OMR_BECOME} tee -a "${path}" > /dev/null
+    echo "${line}" | ${OMR_BECOME} tee -a "${path}" >/dev/null
   fi
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-mount_volume () {
+mount_volume() {
   # AVOID: "The APFS Volume disk3s7 is already unlocked (mounted)" [exits 1]
   local mounted_at
   if ! mounted_at="$(print_volume_mountpoint "${volume_name}")"; then
@@ -197,8 +205,8 @@ mount_volume () {
 
   # E.g., 'disk3s7'
   local device
-  device="$(print_apfs_volume_id "${volume_name}")" \
-    || exit_1
+  device="$(print_apfs_volume_id "${volume_name}")" ||
+    exit_1
 
   local device_name="/dev/${device}"
 
@@ -217,7 +225,7 @@ mount_volume () {
   skip_mount=false
 
   local cmd
-  cmd="$( \
+  cmd="$(
     echo "diskutil ${mount_cmd}" \
       "${device_name}" \
       "${passphrase_arg}" \
@@ -231,13 +239,13 @@ mount_volume () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-unmount_volume () {
+unmount_volume() {
   local volume_name="${1:-${volume_name}}"
 
   # E.g., 'disk3s7'
   local device
-  device="$(print_apfs_volume_id "${volume_name}")" \
-    || exit_1
+  device="$(print_apfs_volume_id "${volume_name}")" ||
+    exit_1
 
   local device_name="/dev/${device}"
 
@@ -264,7 +272,7 @@ unmount_volume () {
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # NODRY: USYNC: ~/.kit/mOS/macOS-disktools/bin/dmg-mount ↔ apfs-mount
-_apfsmount_eval_cmd () {
+_apfsmount_eval_cmd() {
   local cmd="$1"
   local quip="$2"
   local msg="$3"
@@ -287,9 +295,10 @@ _apfsmount_eval_cmd () {
   if ${cmd_failed}; then
     # Check if, e.g., "Error locking APFS Volume; try diskutil unmount
     #                  to see if there is a dissenter"
-    if echo "${cmd_output}" \
-      | grep -q "^Error locking APFS Volume; try diskutil unmount to see if there is a dissenter$" \
-    ; then
+    if echo "${cmd_output}" |
+      grep -q "^Error locking APFS Volume; try diskutil unmount to see if there is a dissenter$" \
+      ; then
+
       unmount_failed=true
     fi
 
@@ -317,7 +326,7 @@ _apfsmount_eval_cmd () {
 #
 #   APFS_CONTAINER_DEVICE=disk3
 
-print_apfs_container_id () {
+print_apfs_container_id() {
   if [ -n "${APFS_CONTAINER_DEVICE}" ]; then
     printf "%s" "${APFS_CONTAINER_DEVICE}"
   else
@@ -327,12 +336,12 @@ print_apfs_container_id () {
 
 # ***
 
-print_apfs_volume_id () {
+print_apfs_volume_id() {
   local volume_name="$1"
 
   local device
-  device="$(print_apfs_device_id "APFS Volume ${volume_name}")" \
-    || true
+  device="$(print_apfs_device_id "APFS Volume ${volume_name}")" ||
+    true
 
   if test -z "${device}"; then
     >&2 echo "- Do you need to create it? Perhaps:"
@@ -353,7 +362,7 @@ print_apfs_volume_id () {
 # - If more than one device is found, perhaps improve this function,
 #   or just use APFS_CONTAINER_DEVICE to specify the device directly.
 
-print_apfs_device_id () {
+print_apfs_device_id() {
   local pattern="$1"
 
   local device
@@ -365,7 +374,7 @@ print_apfs_device_id () {
     return 1
   fi
 
-  if [ $(echo "${device}" | wc -l)  -gt 1 ]; then
+  if [ $(echo "${device}" | wc -l) -gt 1 ]; then
     >&2 echo "ERROR: More than one device found for “${pattern}”"
     >&2 echo "- Yipes:"
     echo "${device}" | >&2 sed 's/^/  /'
@@ -383,7 +392,7 @@ print_apfs_device_id () {
 #   @macOS $ mount
 #   ...
 #   /dev/disk3s7 on /Volumes/foo (apfs, local, journaled, protect)
-print_volume_mountpoint () {
+print_volume_mountpoint() {
   local volume_name="$1"
 
   if [ -z "${volume_name}" ]; then
@@ -394,8 +403,8 @@ print_volume_mountpoint () {
 
   # E.g., 'disk3s7'
   local device
-  device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)" \
-    || true
+  device="$(print_apfs_volume_id "${volume_name}" 2>/dev/null)" ||
+    true
 
   if [ -z "${device}" ]; then
 
@@ -407,7 +416,7 @@ print_volume_mountpoint () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-sudo_preflight () {
+sudo_preflight() {
   if [ -z "${raise}" ]; then
 
     return
@@ -429,7 +438,7 @@ sudo_preflight () {
 #     Unlocked and mounted APFS Volume
 
 # Example function, or available for users; but not used herein.
-tty_scrub_passprompt_output () {
+tty_scrub_passprompt_output() {
   # Move cursor up 3 lines. Output after this will overwrite
   # it, possibly. Or not if output isn't wide enough.
   printf "\033[3A"
@@ -447,7 +456,7 @@ tty_scrub_passprompt_output () {
 # (As opposed to mounting VOLUME_NAME to ~/path/to/work, in which case you
 # would see ~/path/to/work/.Spotlight-V100, .Trashes/, etc., i.e., yuck.)
 
-_apfsmount_process_args () {
+_apfsmount_process_args() {
   # do_mount is implied (if not other command specifed),
   # but included in args. for --help completeness.
   local do_mount=false
@@ -457,49 +466,49 @@ _apfsmount_process_args () {
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      -h|--help|help)
-        _apfsmount_print_usage
+    -h | --help | help)
+      _apfsmount_print_usage
 
-        exit_0
+      exit_0
+      ;;
+    -a | --add | -c | --create)
+      do_create=true
+      let 'cmd_count += 1'
+      ;;
+    -passprompt | --prompt)
+      passphrase_arg="-passprompt"
+      ;;
+    -stdinpassphrase | --stdin)
+      passphrase_arg="-stdinpassphrase"
+      ;;
+    --noauto)
+      do_noauto=true
+      ;;
+    -u | --umount | --unmount)
+      do_unmount=true
+      let 'cmd_count += 1'
+      ;;
+    -m | --mount)
+      do_mount=true
+      let 'cmd_count += 1'
+      ;;
+    *)
+      npargs=$((npargs + 1))
+
+      case ${npargs} in
+      1)
+        volume_name="$1"
         ;;
-      -a|--add|-c|--create)
-        do_create=true
-        let 'cmd_count += 1'
-        ;;
-      -passprompt|--prompt)
-        passphrase_arg="-passprompt"
-        ;;
-      -stdinpassphrase|--stdin)
-        passphrase_arg="-stdinpassphrase"
-        ;;
-      --noauto)
-        do_noauto=true
-        ;;
-      -u|--umount|--unmount)
-        do_unmount=true
-        let 'cmd_count += 1'
-        ;;
-      -m|--mount)
-        do_mount=true
-        let 'cmd_count += 1'
+      2)
+        mount_dir="$1"
         ;;
       *)
-        npargs=$((npargs + 1))
+        >&2 echo "ERROR: Unknown arg(s): $@"
 
-        case ${npargs} in
-          1)
-            volume_name="$1"
-            ;;
-          2)
-            mount_dir="$1"
-            ;;
-          *)
-            >&2 echo "ERROR: Unknown arg(s): $@"
-
-            exit_1
-            ;;
-        esac
+        exit_1
         ;;
+      esac
+      ;;
     esac
 
     shift
@@ -508,8 +517,8 @@ _apfsmount_process_args () {
   skip_mount=false
   mountpoint_arg=""
 
-  if [ ${cmd_count} -gt 1 ] || ( \
-    ${do_noauto} && (${do_mount} || ${do_unmount}) \
+  if [ ${cmd_count} -gt 1 ] || (
+    ${do_noauto} && (${do_mount} || ${do_unmount})
   ); then
     >&2 echo "ERROR: Please only specify one command"
 
@@ -544,7 +553,7 @@ _apfsmount_process_args () {
 
 # ***
 
-_apfsmount_print_usage () {
+_apfsmount_print_usage() {
   echo "USAGE: $(basename -- "$0") [OPTIONS] VOLUME_NAME [MOUNT_DIR]
 
 Create, mount, and unmount APFS Volumes ... using opinionated defaults
@@ -599,7 +608,7 @@ OPTIONS
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-main () {
+main() {
   set -e
 
   # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
@@ -622,4 +631,3 @@ main () {
 if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
   main "$@"
 fi
-
