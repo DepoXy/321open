@@ -467,7 +467,7 @@ infuse_symlinks_paddock_home_subdir() {
   local subdir_type="$2"
 
   if [ -z "${ONEOPEN_KEYS_PADDOCK}" ]; then
-    warn "SKIPD: To hydrate ~/${home_subdir}, set ONEOPEN_KEYS_PADDOCK"
+    warn "SKIPD: To use ~/${home_subdir} symlink, set ONEOPEN_KEYS_PADDOCK"
 
     return 0
   fi

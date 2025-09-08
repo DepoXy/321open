@@ -242,7 +242,7 @@ ssh_agent_manage() {
 #   ~/.kit/odd/321open/lib/biblio.321
 infuse_symlinks_paddock_ssh() {
   if [ -z "${ONEOPEN_KEYS_PADDOCK}" ]; then
-    warn "SKIPD: To hydrate ~/.ssh, set ONEOPEN_KEYS_PADDOCK"
+    warn "SKIPD: To use ~/.ssh symlinks, set ONEOPEN_KEYS_PADDOCK"
 
     return 0
   fi
