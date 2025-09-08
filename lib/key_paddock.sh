@@ -209,12 +209,14 @@ create_key_paddock_repo() {
 
   cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
-  git init -q -b private .
+  if ! [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ]; then
+    git init -q -b private .
 
-  git commit -q --allow-empty \
-    -m "${ONEOPEN_PADDOCK_PROLOGUE:-y͟o͟u͟ ͟c͟a͟n͟n͟o͟t͟ ͟s͟h͟a͟k͟e͟ ͟h͟a͟n͟d͟s͟ ͟w͟i͟t͟h͟ ͟a͟ ͟c͟l͟e͟n͟c͟h͟e͟d͟ ͟f͟i͟s͟t͟}"
+    git commit -q --allow-empty \
+      -m "${ONEOPEN_PADDOCK_PROLOGUE:-y͟o͟u͟ ͟c͟a͟n͟n͟o͟t͟ ͟s͟h͟a͟k͟e͟ ͟h͟a͟n͟d͟s͟ ͟w͟i͟t͟h͟ ͟a͟ ͟c͟l͟e͟n͟c͟h͟e͟d͟ ͟f͟i͟s͟t͟}"
 
-  prepare_keys_paddock_exclude
+    prepare_keys_paddock_exclude
+  fi
 
   relocate_keys_paddock_dirs
 
