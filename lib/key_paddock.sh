@@ -13,7 +13,7 @@
 
 _key_paddock_sh__this_filename="key_paddock.sh"
 
-_key_paddock_sh__source_deps () {
+_key_paddock_sh__source_deps() {
   local sourced_all=true
 
   # On Bash, user can source this file from anywhere.
@@ -41,9 +41,9 @@ _key_paddock_sh__source_deps () {
   ${sourced_all}
 }
 
-_key_paddock_sh__smells_like_bash () { declare -p BASH_SOURCE > /dev/null 2>&1; }
+_key_paddock_sh__smells_like_bash() { declare -p BASH_SOURCE >/dev/null 2>&1; }
 
-_key_paddock_sh__print_this_fullpath () {
+_key_paddock_sh__print_this_fullpath() {
   if _key_paddock_sh__smells_like_bash; then
     echo "$(realpath -- "${BASH_SOURCE[0]}")"
   elif [ "$(basename -- "$0")" = "${_key_paddock_sh__this_filename}" ]; then
@@ -57,11 +57,11 @@ _key_paddock_sh__print_this_fullpath () {
 
 _key_paddock_sh__this_fullpath="$(_key_paddock_sh__print_this_fullpath)"
 
-_key_paddock_sh__shell_sourced () {
+_key_paddock_sh__shell_sourced() {
   [ "$(realpath -- "$0")" != "${_key_paddock_sh__this_fullpath}" ]
 }
 
-_key_paddock_sh__source_file () {
+_key_paddock_sh__source_file() {
   local prfx="${1:-.}"
   local depd="${2:-.}"
   local file="${3:-.}"
@@ -102,10 +102,10 @@ _key_paddock_sh__source_file () {
 
 # BONUS: You can use these aliases instead of the uniquely-named functions,
 # just be aware not to call any alias after calling _source_deps.
-_shell_sourced () { _key_paddock_sh__shell_sourced; }
-_source_deps () { _key_paddock_sh__source_deps; }
+_shell_sourced() { _key_paddock_sh__shell_sourced; }
+_source_deps() { _key_paddock_sh__source_deps; }
 
-_key_paddock_sh__source_deps_unset_cleanup () {
+_key_paddock_sh__source_deps_unset_cleanup() {
   unset -v _key_paddock_sh__this_filename
   unset -f _key_paddock_sh__print_this_fullpath
   unset -f _key_paddock_sh__shell_sourced
@@ -128,14 +128,14 @@ _key_paddock_sh__source_deps_unset_cleanup () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-ensure_key_paddock_exists () {
+ensure_key_paddock_exists() {
   if verify_key_paddock_repo_and_home_dir_symlinks; then
     ensure_key_paddock_ssh_permissions
 
     return 0
   fi
 
-  if ( create_key_paddock_repo "${ONEOPEN_KEYS_PADDOCK}" ); then
+  if (create_key_paddock_repo "${ONEOPEN_KEYS_PADDOCK}"); then
     ensure_key_paddock_ssh_permissions
 
     notice "Keys paddocked: $(highlight "${ONEOPEN_KEYS_PADDOCK}")"
@@ -144,20 +144,20 @@ ensure_key_paddock_exists () {
   fi
 }
 
-verify_key_paddock_repo_and_home_dir_symlinks () {
-  if false \
-    || [ -z "${ONEOPEN_KEYS_PADDOCK}" ] \
-    || [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ] \
-  ; then
+verify_key_paddock_repo_and_home_dir_symlinks() {
+  if false ||
+    [ -z "${ONEOPEN_KEYS_PADDOCK}" ] ||
+    [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ] \
+    ; then
 
     return 0
   fi
 
-  if true \
-    && [ -h "${HOME}/.gnupg" ] \
-    && [ -h "${HOME}/.ssh/config" ] \
-    && [ -h "${HOME}/.password-store" ] \
-  ; then
+  if true &&
+    [ -h "${HOME}/.gnupg" ] &&
+    [ -h "${HOME}/.ssh/config" ] &&
+    [ -h "${HOME}/.password-store" ] \
+    ; then
 
     return 0
   fi
@@ -165,11 +165,11 @@ verify_key_paddock_repo_and_home_dir_symlinks () {
   return 1
 }
 
-ensure_key_paddock_ssh_permissions () {
-  ( ensure_key_paddock_ssh_permissions_with_cd )
+ensure_key_paddock_ssh_permissions() {
+  (ensure_key_paddock_ssh_permissions_with_cd)
 }
 
-ensure_key_paddock_ssh_permissions_with_cd () {
+ensure_key_paddock_ssh_permissions_with_cd() {
   cd "${ONEOPEN_KEYS_PADDOCK}"
 
   chmod 2750 .ssh/
@@ -181,7 +181,7 @@ ensure_key_paddock_ssh_permissions_with_cd () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-ensure_key_paddock_symlinks () {
+ensure_key_paddock_symlinks() {
   # Create/Verify ~/.gnupg symlink
   infuse_symlinks_paddock_gpg
   # Create/Verify ~/.password-store symlink
@@ -194,7 +194,7 @@ ensure_key_paddock_symlinks () {
 
 # ***
 
-remove_key_paddock_symlinks () {
+remove_key_paddock_symlinks() {
   remove_symlinks_paddock_gpg
   remove_symlinks_paddock_pwd
   remove_symlinks_paddock_ssh
@@ -202,7 +202,7 @@ remove_key_paddock_symlinks () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-create_key_paddock_repo () {
+create_key_paddock_repo() {
   mkdir -p -- "${ONEOPEN_KEYS_PADDOCK}"
 
   # For SSH to work, parent of ~/.ssh much be restricted.
@@ -219,20 +219,20 @@ create_key_paddock_repo () {
 
   relocate_keys_paddock_dirs
 
-  ensure_keys_paddock_password_store \
-    || return 1
+  ensure_keys_paddock_password_store ||
+    return 1
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-prepare_keys_paddock_exclude () {
-  print_keys_paddock_exclude_gpg >> ".gitignore"
+prepare_keys_paddock_exclude() {
+  print_keys_paddock_exclude_gpg >>".gitignore"
 
-  echo >> ".gitignore"
-  print_keys_paddock_exclude_ssh >> ".gitignore"
+  echo >>".gitignore"
+  print_keys_paddock_exclude_ssh >>".gitignore"
 
-  echo >> ".gitignore"
-  print_keys_paddock_exclude_pwd >> ".gitignore"
+  echo >>".gitignore"
+  print_keys_paddock_exclude_pwd >>".gitignore"
 
   # ***
 
@@ -244,7 +244,7 @@ prepare_keys_paddock_exclude () {
 # REFER: Concise explainer on GPG files:
 # https://www.howtogeek.com/816878/how-to-back-up-and-restore-gpg-keys-on-linux/
 
-print_keys_paddock_exclude_gpg () {
+print_keys_paddock_exclude_gpg() {
   cat <<'EOF'
 # *** ~/.gnupg
 
@@ -274,7 +274,7 @@ print_keys_paddock_exclude_gpg () {
 EOF
 }
 
-print_keys_paddock_exclude_ssh () {
+print_keys_paddock_exclude_ssh() {
   cat <<'EOF'
 # *** ~/.ssh
 
@@ -290,7 +290,7 @@ print_keys_paddock_exclude_ssh () {
 EOF
 }
 
-print_keys_paddock_exclude_pwd () {
+print_keys_paddock_exclude_pwd() {
   cat <<'EOF'
 # *** ~/.password-store
 
@@ -301,7 +301,7 @@ EOF
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-relocate_keys_paddock_dirs () {
+relocate_keys_paddock_dirs() {
   relocate_keys_paddock_gnupg
   relocate_keys_paddock_pwds
   relocate_keys_paddock_ssh
@@ -309,18 +309,19 @@ relocate_keys_paddock_dirs () {
 
 # ***
 
-relocate_keys_paddock_gnupg () {
+relocate_keys_paddock_gnupg() {
   cd "${ONEOPEN_KEYS_PADDOCK}"
 
   local dir_name=".gnupg"
 
   local home_dir="${HOME}/${dir_name}"
 
-  if true \
-    && [ -d "${home_dir}" ] \
-    && ! [ -h "${home_dir}" ] \
-    && ! [ -d "${dir_name}" ] \
-  ; then
+  if true &&
+    [ -d "${home_dir}" ] &&
+    ! [ -h "${home_dir}" ] &&
+    ! [ -d "${dir_name}" ] \
+    ; then
+
     # Ignore ~/.gnupg sockets (e.g., ~.gnupg/S.gpg-agent, etc.)
     # to avoid cannot-move-socket errors.
     #
@@ -334,8 +335,8 @@ relocate_keys_paddock_gnupg () {
     #     there should be not STDOUT, either.
     local pattern="^cp: /Users/${LOGNAME}/.gnupg/S\.[^ ]\+ is a socket (not copied)."
 
-    command mv -- "${home_dir}" "." 3>&1 1>&2 2>&3 3>&- \
-      | grep -v "${pattern}" 3>&1 1>&2 2>&3 3>&-
+    command mv -- "${home_dir}" "." 3>&1 1>&2 2>&3 3>&- |
+      grep -v "${pattern}" 3>&1 1>&2 2>&3 3>&-
 
     # ***
 
@@ -353,18 +354,19 @@ relocate_keys_paddock_gnupg () {
 
 # ***
 
-relocate_keys_paddock_pwds () {
+relocate_keys_paddock_pwds() {
   cd "${ONEOPEN_KEYS_PADDOCK}"
 
   local dir_name=".password-store"
 
   local home_dir="${HOME}/${dir_name}"
 
-  if true \
-    && [ -d "${home_dir}" ] \
-    && ! [ -h "${home_dir}" ] \
-    && ! [ -d "${dir_name}" ] \
-  ; then
+  if true &&
+    [ -d "${home_dir}" ] &&
+    ! [ -h "${home_dir}" ] &&
+    ! [ -d "${dir_name}" ] \
+    ; then
+
     command mv -- "${home_dir}" "."
 
     command ln -sfn "${ONEOPEN_KEYS_PADDOCK}/${dir_name}" "${home_dir}"
@@ -376,7 +378,7 @@ relocate_keys_paddock_pwds () {
 
 # ***
 
-relocate_keys_paddock_ssh () {
+relocate_keys_paddock_ssh() {
   cd "${ONEOPEN_KEYS_PADDOCK}"
 
   local dir_name=".ssh"
@@ -402,7 +404,7 @@ relocate_keys_paddock_ssh () {
 
   git add "."
 
-  git commit -q -m "Insert: ${dir_name}/ config &/or id_* keys" > /dev/null
+  git commit -q -m "Insert: ${dir_name}/ config &/or id_* keys" >/dev/null
 
   # ***
 
@@ -413,7 +415,7 @@ relocate_keys_paddock_ssh () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-ensure_keys_paddock_password_store () {
+ensure_keys_paddock_password_store() {
   local pwds_name=".password-store"
 
   cd "${ONEOPEN_KEYS_PADDOCK}"
@@ -434,8 +436,8 @@ ensure_keys_paddock_password_store () {
   command ln -sfn "${ONEOPEN_KEYS_PADDOCK}/${pwds_name}" "${HOME}/${pwds_name}"
 
   local PSTORE_KEYID
-  find_or_generate_password_store_key_and_print_key_id \
-    || return 1
+  find_or_generate_password_store_key_and_print_key_id ||
+    return 1
 
   # Commit the new GPG key, maybe.
   if [ -n "$(git status --porcelain=v1)" ]; then
@@ -450,16 +452,16 @@ ensure_keys_paddock_password_store () {
   # Use the key to initialize `~/.password-store/.gpg-id`
   output="$(pass init "${PSTORE_KEYID}")"
 
-  echo "${output}" | grep -v "^Password store initialized for .*" \
-    || true
+  echo "${output}" | grep -v "^Password store initialized for .*" ||
+    true
 
   # `pass git init -q` doesn't work here, b/c pass calls git-commit w/out -q.
-  pass git init > /dev/null
+  pass git init >/dev/null
 }
 
 # ***
 
-find_or_generate_password_store_key_and_print_key_id () {
+find_or_generate_password_store_key_and_print_key_id() {
   local key_ids
   key_ids=$(print_password_store_key_ids)
 
@@ -499,9 +501,9 @@ find_or_generate_password_store_key_and_print_key_id () {
       >&2 warn "ERROR: Cannot setup ~/.password-store"
       >&2 warn "- \`gpg --full-generate-key ...\` failed:"
       >&2 echo
-      _FAILURE_EXPECTED=true generate_password_store_key "${passphrase}" 2>&1 \
-        | >&2 sed 's/^/  /' \
-        || true
+      _FAILURE_EXPECTED=true generate_password_store_key "${passphrase}" 2>&1 |
+        >&2 sed 's/^/  /' ||
+        true
       >&2 echo
 
       return 1
@@ -561,7 +563,7 @@ find_or_generate_password_store_key_and_print_key_id () {
 # - See also:
 #   https://www.gnupg.org/documentation/manuals/gnupg/Unattended-GPG-key-generation.html
 
-generate_password_store_key () {
+generate_password_store_key() {
   local passphrase="$1"
 
   # Some other options:
@@ -592,10 +594,10 @@ EOF
 
   if ${_PRINT_TRACE:-false} || ${_FAILURE_EXPECTED:-false}; then
     debug "Generating Password Store key:\n  $ gpg --batch --full-generate-key <<<\"" \
-      "\n$(echo "${unattended_key_generation_parameters}" \
-           | sed 's/^Passphrase: .\+/Passphrase: ---/' \
-           | sed 's/^\([^:]\+\): $/\1: <*** ALERT: MISSING ***>/' \
-           | sed 's/^/    /')\""
+      "\n$(echo "${unattended_key_generation_parameters}" |
+        sed 's/^Passphrase: .\+/Passphrase: ---/' |
+        sed 's/^\([^:]\+\): $/\1: <*** ALERT: MISSING ***>/' |
+        sed 's/^/    /')\""
     ! ${_FAILURE_EXPECTED:-false} || echo
   fi
 
@@ -641,9 +643,9 @@ EOF
 # REFER: https://github.com/gpg/gnupg/blob/master/doc/DETAILS
 # - "Field 5 - KeyID"
 
-print_password_store_key_ids () {
+print_password_store_key_ids() {
   local deprefixed
-  deprefixed="$( \
+  deprefixed="$(
     echo "${ONEOPEN_PASSWORD_STORE_EMAIL}" | sed 's/^\.\+//'
   )"
 
@@ -659,23 +661,22 @@ print_password_store_key_ids () {
 
   >&2 verbose "gpg --list-keys --with-colons \"${deprefixed}\""
 
-  gpg --list-keys --with-colons "${deprefixed}" 2> /dev/null \
-    | awk -F: '/^pub:/ { print $5 }'
+  gpg --list-keys --with-colons "${deprefixed}" 2>/dev/null |
+    awk -F: '/^pub:/ { print $5 }'
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-infuse_symlinks_paddock_pwd () {
+infuse_symlinks_paddock_pwd() {
   infuse_symlinks_paddock_home_subdir ".password-store" "PWD"
 }
 
 # ***
 
-remove_symlinks_paddock_pwd () {
+remove_symlinks_paddock_pwd() {
   remove_symlinks_paddock_home_subdir ".password-store" "PWD"
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 _source_deps
-
