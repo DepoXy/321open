@@ -168,6 +168,21 @@ verify_key_paddock_repo_and_home_dir_symlinks() {
     return 0
   fi
 
+  # REFER: These symlinks can be regenerated at any time via:
+  #   ensure_key_paddock_symlinks
+  # which calls
+  #   infuse_symlinks_paddock_gpg
+  #   infuse_symlinks_paddock_pwd
+  #   infuse_symlinks_paddock_ssh
+  # These symlinks are also generated when this script is run
+  # on a new host to relocate the original directories, via:
+  #   ✓ relocate_keys_paddock_gnupg [symlinks ~/.gnupg]
+  #   x relocate_keys_paddock_ssh   [doesn't symlink ~/.ssh/config]
+  #   ✓ relocate_keys_paddock_pwds  [symlinks ~/.password-store]
+  # Finally, while this script doesn't initialize ~/.gnupg
+  # or ~/.ssh, it will create the original .password-store
+  # repo, which also creates the ~/.password-store symlink:
+  #   ensure_keys_paddock_password_store
   if true &&
     [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ] &&
     [ -h "${HOME}/.gnupg" ] &&
