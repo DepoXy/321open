@@ -159,15 +159,17 @@ ensure_key_paddock_exists() {
 #     user to set the paddock path, as a best practice.
 
 verify_key_paddock_repo_and_home_dir_symlinks() {
-  if false ||
-    [ -z "${ONEOPEN_KEYS_PADDOCK}" ] ||
-    [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ] \
-    ; then
+  # If user opts-out (or doesn't opt-in?) using a key
+  # paddock, return truthy; caller will ensure ~/.ssh
+  # file perms, but it won't relocate the 3 security
+  # asset directories, nor will it create 3 symlinks.
+  if [ -z "${ONEOPEN_KEYS_PADDOCK}" ]; then
 
     return 0
   fi
 
   if true &&
+    [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ] &&
     [ -h "${HOME}/.gnupg" ] &&
     [ -h "${HOME}/.ssh/config" ] &&
     [ -h "${HOME}/.password-store" ] \
