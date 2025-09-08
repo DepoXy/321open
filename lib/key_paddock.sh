@@ -143,6 +143,21 @@ ensure_key_paddock_exists() {
   fi
 }
 
+# SAVVY: User can leave paddock path environ unset to use
+# 321open without the encfs features.
+# - If ONEOPEN_KEYS_PADDOCK is unset, `321open` will not
+#   use separate encfs(es) to manage ~/.gnupg, ~/.ssh, or
+#   ~/.password-store, nor will it use version control to
+#   track ~/.gnupg and ~/.ssh files (though `pass` still
+#   manages a repo for ~/.password-store).
+# - Otherwise, 321open still works: it'll mount APFS and
+#   DMG images; it'll cache a GPG passphrase; it'll load
+#   SSH keys (using ssh-agent); and it'll cache the Git
+#   signing key; (though it won't create and seed the
+#   ~/.password-store repo (create_key_paddock_repo)).
+#   - Also, 321open will print a few warnings to tell
+#     user to set the paddock path, as a best practice.
+
 verify_key_paddock_repo_and_home_dir_symlinks() {
   if false ||
     [ -z "${ONEOPEN_KEYS_PADDOCK}" ] ||
