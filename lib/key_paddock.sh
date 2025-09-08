@@ -171,8 +171,11 @@ verify_key_paddock_repo_and_home_dir_symlinks() {
   if true &&
     [ -d "${ONEOPEN_KEYS_PADDOCK}/.git" ] &&
     [ -h "${HOME}/.gnupg" ] &&
+    [ -d "${HOME}/.gnupg" ] &&
     [ -h "${HOME}/.ssh/config" ] &&
-    [ -h "${HOME}/.password-store" ] \
+    [ -f "${HOME}/.ssh/config" ] &&
+    [ -h "${HOME}/.password-store" ] &&
+    [ -d "${HOME}/.password-store" ] \
     ; then
 
     return 0
