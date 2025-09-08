@@ -169,7 +169,7 @@ ensure_key_paddock_ssh_permissions() {
 }
 
 ensure_key_paddock_ssh_permissions_with_cd() {
-  cd "${ONEOPEN_KEYS_PADDOCK}"
+  cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
   chmod 2750 .ssh/
   chmod 640 .ssh/authorized_keys*
@@ -205,9 +205,9 @@ create_key_paddock_repo() {
   mkdir -p -- "${ONEOPEN_KEYS_PADDOCK}"
 
   # For SSH to work, parent of ~/.ssh much be restricted.
-  chmod 700 "${ONEOPEN_KEYS_PADDOCK}"
+  chmod 700 -- "${ONEOPEN_KEYS_PADDOCK}"
 
-  cd "${ONEOPEN_KEYS_PADDOCK}"
+  cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
   git init -q -b private .
 
@@ -309,7 +309,7 @@ relocate_keys_paddock_dirs() {
 # ***
 
 relocate_keys_paddock_gnupg() {
-  cd "${ONEOPEN_KEYS_PADDOCK}"
+  cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
   local dir_name=".gnupg"
 
@@ -339,7 +339,7 @@ relocate_keys_paddock_gnupg() {
 
     # ***
 
-    command ln -sfn "${ONEOPEN_KEYS_PADDOCK}/${dir_name}" "${home_dir}"
+    command ln -sfn -- "${ONEOPEN_KEYS_PADDOCK}/${dir_name}" "${home_dir}"
 
     gpg_reload_agent
 
@@ -354,7 +354,7 @@ relocate_keys_paddock_gnupg() {
 # ***
 
 relocate_keys_paddock_pwds() {
-  cd "${ONEOPEN_KEYS_PADDOCK}"
+  cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
   local dir_name=".password-store"
 
@@ -368,7 +368,7 @@ relocate_keys_paddock_pwds() {
 
     command mv -- "${home_dir}" "."
 
-    command ln -sfn "${ONEOPEN_KEYS_PADDOCK}/${dir_name}" "${home_dir}"
+    command ln -sfn -- "${ONEOPEN_KEYS_PADDOCK}/${dir_name}" "${home_dir}"
 
     # `pass` manages ~/.password-store Git repo, so Paddock
     # excludes it; therefore nothing to add and commit.
@@ -378,7 +378,7 @@ relocate_keys_paddock_pwds() {
 # ***
 
 relocate_keys_paddock_ssh() {
-  cd "${ONEOPEN_KEYS_PADDOCK}"
+  cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
   local dir_name=".ssh"
 
@@ -417,7 +417,7 @@ relocate_keys_paddock_ssh() {
 ensure_keys_paddock_password_store() {
   local pwds_name=".password-store"
 
-  cd "${ONEOPEN_KEYS_PADDOCK}"
+  cd -- "${ONEOPEN_KEYS_PADDOCK}"
 
   if [ -d "${pwds_name}/.git" ]; then
 
@@ -432,7 +432,7 @@ ensure_keys_paddock_password_store() {
 
   mkdir -p -- "${pwds_name}"
 
-  command ln -sfn "${ONEOPEN_KEYS_PADDOCK}/${pwds_name}" "${HOME}/${pwds_name}"
+  command ln -sfn -- "${ONEOPEN_KEYS_PADDOCK}/${pwds_name}" "${HOME}/${pwds_name}"
 
   local PSTORE_KEYID
   find_or_generate_password_store_key_and_print_key_id ||
