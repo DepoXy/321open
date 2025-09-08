@@ -12,7 +12,7 @@
 
 _biblio_ssh__this_filename="biblio-ssh"
 
-_biblio_ssh__source_deps () {
+_biblio_ssh__source_deps() {
   local sourced_all=true
 
   # On Bash, user can source this file from anywhere.
@@ -42,9 +42,9 @@ _biblio_ssh__source_deps () {
   ${sourced_all}
 }
 
-_biblio_ssh__smells_like_bash () { declare -p BASH_SOURCE > /dev/null 2>&1; }
+_biblio_ssh__smells_like_bash() { declare -p BASH_SOURCE >/dev/null 2>&1; }
 
-_biblio_ssh__print_this_fullpath () {
+_biblio_ssh__print_this_fullpath() {
   if _biblio_ssh__smells_like_bash; then
     echo "$(realpath -- "${BASH_SOURCE[0]}")"
   elif [ "$(basename -- "$0")" = "${_biblio_ssh__this_filename}" ]; then
@@ -58,11 +58,11 @@ _biblio_ssh__print_this_fullpath () {
 
 _biblio_ssh__this_fullpath="$(_biblio_ssh__print_this_fullpath)"
 
-_biblio_ssh__shell_sourced () {
+_biblio_ssh__shell_sourced() {
   [ "$(realpath -- "$0")" != "${_biblio_ssh__this_fullpath}" ]
 }
 
-_biblio_ssh__source_file () {
+_biblio_ssh__source_file() {
   local prfx="${1:-.}"
   local depd="${2:-.}"
   local file="${3:-.}"
@@ -103,10 +103,10 @@ _biblio_ssh__source_file () {
 
 # BONUS: You can use these aliases instead of the uniquely-named functions,
 # just be aware not to call any alias after calling _source_deps.
-_shell_sourced () { _biblio_ssh__shell_sourced; }
-_source_deps () { _biblio_ssh__source_deps; }
+_shell_sourced() { _biblio_ssh__shell_sourced; }
+_source_deps() { _biblio_ssh__source_deps; }
 
-_biblio_ssh__source_deps_unset_cleanup () {
+_biblio_ssh__source_deps_unset_cleanup() {
   unset -v _biblio_ssh__this_filename
   unset -f _biblio_ssh__print_this_fullpath
   unset -f _biblio_ssh__shell_sourced
@@ -143,7 +143,7 @@ PASS_ROOT_SSH="${PASS_ROOT_SSH}"
 # doesn't require a password, anyway, so not really sure how exactly
 # it works, just that you want to kill existing ssh-agent tasks first)).
 
-ssh_agent_ssh_agent_kill () {
+ssh_agent_ssh_agent_kill() {
   # CXREF: ~/.kit/odd/321open/bin/ssh-agent-kill
   # ALTLY: "$(dirname -- "$(realpath -- "$0")")/../bin/ssh-agent-kill"
   ssh_agent_kill
@@ -151,7 +151,7 @@ ssh_agent_ssh_agent_kill () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-ssh_agent_ssh_add_encrypted_keys () {
+ssh_agent_ssh_add_encrypted_keys() {
   if [ -z "${PASS_ROOT_SSH}" ]; then
     info "SKIPD: Skipping SSH hydrate [set PASS_ROOT_SSH to use]"
 
@@ -175,10 +175,11 @@ ssh_agent_ssh_add_encrypted_keys () {
   # Loop through ${PASS_ROOT_SSH}/{keyname} pass entries — the {keyname}
   # is the same as the ~/.ssh/{keyname}, and the first line of
   # the pass entry is the SSH encryption passphrase.
-  for pass_gpg in $( \
+  for pass_gpg in $(
     $(_command_fd_or_fdfind) -d 1 ".gpg" \
-      "${HOME}/.password-store/${PASS_ROOT_SSH}") \
-  ; do
+      "${HOME}/.password-store/${PASS_ROOT_SSH}"
+  ); do
+
     local pass_path="${pass_gpg%.gpg}"
     local ssh_keyname="$(basename -- "${pass_path}")"
 
@@ -193,16 +194,20 @@ ssh_agent_ssh_add_encrypted_keys () {
   done
 }
 
-_command_fd_or_fdfind () {
+_command_fd_or_fdfind() {
   for cmd in "fd" "fdfind"; do
-    ( unset -f ${cmd}; unalias ${cmd}; command -v ${cmd} ) 2> /dev/null \
-      && break
+    (
+      unset -f ${cmd}
+      unalias ${cmd}
+      command -v ${cmd}
+    ) 2>/dev/null &&
+      break
   done
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-ssh_agent_manage () {
+ssh_agent_manage() {
   ! ${_321_VERBOSE_BLANKS:-false} || echo
 
   ssh_agent_ssh_agent_kill
@@ -235,7 +240,7 @@ ssh_agent_manage () {
 
 # USYNC: Similar: infuse_symlinks_paddock_home_subdir & infuse_symlinks_paddock_ssh
 #   ~/.kit/odd/321open/lib/biblio.321
-infuse_symlinks_paddock_ssh () {
+infuse_symlinks_paddock_ssh() {
   if [ -z "${ONEOPEN_KEYS_PADDOCK}" ]; then
     warn "SKIPD: To hydrate ~/.ssh, set ONEOPEN_KEYS_PADDOCK"
 
@@ -244,9 +249,9 @@ infuse_symlinks_paddock_ssh () {
 
   # For cosmetics, prefer relative path from ~/.ssh/<file> to paddock.
   local relative_path
-  relative_path="$( \
-    echo "${ONEOPEN_KEYS_PADDOCK}" \
-    | sed -E "s@^${HOME}/@@"
+  relative_path="$(
+    echo "${ONEOPEN_KEYS_PADDOCK}" |
+      sed -E "s@^${HOME}/@@"
   )"
   if [ "${relative_path}" != "${ONEOPEN_KEYS_PADDOCK}" ]; then
     # From perspective of ~/.ssh
@@ -266,17 +271,17 @@ infuse_symlinks_paddock_ssh () {
 
     local sourcef
 
-    ( \
-      printf "${relative_path}/config\0" ; \
-      find "${relative_path}" -maxdepth 1 -type f -name "id_*" -print0 ; \
-    ) | sort -z \
-    | while IFS= read -r -d '' sourcef; do
-      local sshname="$(basename -- "${sourcef}")"
+    (
+      printf "${relative_path}/config\0"
+      find "${relative_path}" -maxdepth 1 -type f -name "id_*" -print0
+    ) | sort -z |
+      while IFS= read -r -d '' sourcef; do
+        local sshname="$(basename -- "${sourcef}")"
 
-      # CXREF: ~/.kit/odd/321open/lib/biblio.321
-      infuse_symlink_from_home_to_paddock_unless_conflict \
-        "${sourcef}" "${sshname}" "SSH"
-    done
+        # CXREF: ~/.kit/odd/321open/lib/biblio.321
+        infuse_symlink_from_home_to_paddock_unless_conflict \
+          "${sourcef}" "${sshname}" "SSH"
+      done
   fi
 
   cd "${before_cd}"
@@ -284,13 +289,13 @@ infuse_symlinks_paddock_ssh () {
 
 # ***
 
-remove_symlinks_paddock_ssh () {
+remove_symlinks_paddock_ssh() {
   local home_subpath=".ssh"
 
   local n_links
-  n_links="$( \
-    find "${HOME}/${home_subpath}" -maxdepth 1 -type l \( -name "id_*" -o -name "config" \) \
-    | wc -l
+  n_links="$(
+    find "${HOME}/${home_subpath}" -maxdepth 1 -type l \( -name "id_*" -o -name "config" \) |
+      wc -l
   )"
 
   find "${HOME}/${home_subpath}" -maxdepth 1 -type l \( -name "id_*" -o -name "config" \) \
@@ -308,4 +313,3 @@ remove_symlinks_paddock_ssh () {
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 _source_deps
-

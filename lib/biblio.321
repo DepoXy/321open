@@ -36,7 +36,7 @@ _321CONF_XDG_PATH="depoxy/321open.cfg"
 
 _biblio_321__this_filename="biblio.321"
 
-_biblio_321__source_deps () {
+_biblio_321__source_deps() {
   local sourced_all=true
 
   # On Bash, user can source this file from anywhere.
@@ -73,9 +73,9 @@ _biblio_321__source_deps () {
   ${sourced_all}
 }
 
-_biblio_321__smells_like_bash () { declare -p BASH_SOURCE > /dev/null 2>&1; }
+_biblio_321__smells_like_bash() { declare -p BASH_SOURCE >/dev/null 2>&1; }
 
-_biblio_321__print_this_fullpath () {
+_biblio_321__print_this_fullpath() {
   if _biblio_321__smells_like_bash; then
     echo "$(realpath -- "${BASH_SOURCE[0]}")"
   elif [ "$(basename -- "$0")" = "${_biblio_321__this_filename}" ]; then
@@ -89,11 +89,11 @@ _biblio_321__print_this_fullpath () {
 
 _biblio_321__this_fullpath="$(_biblio_321__print_this_fullpath)"
 
-_biblio_321__shell_sourced () {
+_biblio_321__shell_sourced() {
   [ "$(realpath -- "$0")" != "${_biblio_321__this_fullpath}" ]
 }
 
-_biblio_321__source_file () {
+_biblio_321__source_file() {
   local prfx="${1:-.}"
   local depd="${2:-.}"
   local file="${3:-.}"
@@ -134,10 +134,10 @@ _biblio_321__source_file () {
 
 # BONUS: You can use these aliases instead of the uniquely-named functions,
 # just be aware not to call any alias after calling _source_deps.
-_shell_sourced () { _biblio_321__shell_sourced; }
-_source_deps () { _biblio_321__source_deps; }
+_shell_sourced() { _biblio_321__shell_sourced; }
+_source_deps() { _biblio_321__source_deps; }
 
-_biblio_321__source_deps_unset_cleanup () {
+_biblio_321__source_deps_unset_cleanup() {
   unset -v _biblio_321__this_filename
   unset -f _biblio_321__print_this_fullpath
   unset -f _biblio_321__shell_sourced
@@ -159,8 +159,8 @@ _biblio_321__source_deps_unset_cleanup () {
 # *** end boilerplate `source_deps`> -------------------------------|
 
 # USAGE: For callers to use, e.g., `check_dep 'expect' || exit 1`.
-check_dep () {
-  if ! command -v $1 > /dev/null 2>&1; then
+check_dep() {
+  if ! command -v $1 >/dev/null 2>&1; then
     >&2 printf '\r%s\n' "ERROR: Missing dependency: ‘$1’"
 
     false
@@ -171,7 +171,7 @@ check_dep () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_biblio321_source_user_config_and_init_environs () {
+_biblio321_source_user_config_and_init_environs() {
   _321_source_dep_user_config
 
   _lib321_init_environ_args
@@ -179,7 +179,7 @@ _biblio321_source_user_config_and_init_environs () {
 
 # ***
 
-_321_source_dep_user_config () {
+_321_source_dep_user_config() {
   local xdg_conf="${XDG_CONFIG_HOME:-${HOME}/.config}"
   local user_conf="${ONEOPEN_CONFIG:-${xdg_conf}/${_321CONF_XDG_PATH}}"
 
@@ -189,7 +189,7 @@ _321_source_dep_user_config () {
   fi
 }
 
-_lib321_init_environ_args () {
+_lib321_init_environ_args() {
   # USAGE: Set `APFS_PLAIN_VOLUME_NAME=` to opt-out.
   # - Note the sans-colon dash '-', similar to:
   #     if [ -z ${FOO+x} ]; then FOO=...
@@ -227,7 +227,7 @@ _lib321_init_environ_args () {
     #     and isn't so large you'll think twice about it.
     DMG_ENCFS_IMAGE_SIZE="${DMG_ENCFS_IMAGE_SIZE:-199m}"
   else
-    unset -v DMG_ENCFS_IMAGE_NAME  # Already true, just saying
+    unset -v DMG_ENCFS_IMAGE_NAME # Already true, just saying
     unset -v DMG_ENCFS_IMAGE_PATH
   fi
 
@@ -298,11 +298,11 @@ PREVALENT_PHRASE=""
 # - CALSO: Debian `cryptsetup` has app with same behavior as listed
 #   above, e.g., `apt install cryptsetup`, then:
 #     password=$(/lib/cryptsetup/askpass "What's the password? ")
-prompt_passphrase () {
+prompt_passphrase() {
   local prompt="Yo! What's your gut tell you? "
 
-  IFS= read -rsp "${prompt}" PREVALENT_PHRASE < /dev/tty \
-    || true
+  IFS= read -rsp "${prompt}" PREVALENT_PHRASE </dev/tty ||
+    true
 
   # The `read` leaves the cursor after the prompt; scrub the
   # line and reset the cursor.
@@ -330,8 +330,8 @@ prompt_passphrase () {
 
 # SAVVY: This fcn. not called by `321open`, but by author's private
 # `321open` (to avoid `tomb open` escalation prompt).
-ensure_sudo_credentials_cached () {
-  if sudo -n true 2> /dev/null; then
+ensure_sudo_credentials_cached() {
+  if sudo -n true 2>/dev/null; then
     return 0
   fi
 
@@ -342,8 +342,8 @@ ensure_sudo_credentials_cached () {
   fi
 }
 
-ensure_sudo_credentials_cached_secure () {
-  if sudo -nv 2> /dev/null; then
+ensure_sudo_credentials_cached_secure() {
+  if sudo -nv 2>/dev/null; then
 
     return 0
   fi
@@ -362,14 +362,15 @@ ensure_sudo_credentials_cached_secure () {
 # SAVVY: If the password is incorrect, `sudo -v` will hang for a
 # moment (while it goes through the "incorrect password attempt"
 # timeouts) before failing.
-ensure_sudo_credentials_cached_cached () {
+ensure_sudo_credentials_cached_cached() {
   sudo -k
   # OUTPUT: Ignore the (stderr) prompt that `sudo -v` always shows, e.g.,:
   #   [sudo] password for user:
-  if ! pass "${ONEOPEN_PASSWORD_STORE_ADMIN}" \
-    | head -1 \
-    | sudo -v --stdin 2> /dev/null \
-  ; then
+  if ! pass "${ONEOPEN_PASSWORD_STORE_ADMIN}" |
+    head -1 |
+    sudo -v --stdin 2>/dev/null \
+    ; then
+
     >&2 error "ERROR: Incorrect sudo password / Please fix it:"
     >&2 error "  pass edit ${ONEOPEN_PASSWORD_STORE_ADMIN}"
 
@@ -380,7 +381,7 @@ ensure_sudo_credentials_cached_cached () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-ensure_password_store_admin_entry_exists () {
+ensure_password_store_admin_entry_exists() {
   if [ -z "${ONEOPEN_PASSWORD_STORE_ADMIN}" ]; then
     warn "ALERT: Skipping admin pass setup [set ONEOPEN_PASSWORD_STORE_ADMIN to use]"
 
@@ -412,8 +413,8 @@ ensure_password_store_admin_entry_exists () {
   #   /Users/<id -un>/.password-store/phy/host
   #   /Users/<id -un>/.password-store/phy/host/<hostname>
   #   Enter contents of phy/host/<hostname>/admin and press Ctrl+D when finished:
-  echo -en "${PREVALENT_WORD}\n$(TTT) / @$(hostname) / ${LOGNAME} / ${PREVALENT_WORD}\n" \
-    | pass insert -m "${ONEOPEN_PASSWORD_STORE_ADMIN}" > /dev/null
+  echo -en "${PREVALENT_WORD}\n$(TTT) / @$(hostname) / ${LOGNAME} / ${PREVALENT_WORD}\n" |
+    pass insert -m "${ONEOPEN_PASSWORD_STORE_ADMIN}" >/dev/null
 
   notice "Created admin pwd entry: $(highlight "${ONEOPEN_PASSWORD_STORE_ADMIN}")"
 
@@ -426,11 +427,11 @@ ensure_password_store_admin_entry_exists () {
 
 # ***
 
-prompt_password () {
+prompt_password() {
   local prompt="What's your password? "
 
-  IFS= read -rsp "${prompt}" PREVALENT_WORD < /dev/tty \
-    || true
+  IFS= read -rsp "${prompt}" PREVALENT_WORD </dev/tty ||
+    true
 
   # The `read` leaves the cursor after the prompt; move to the next line.
   #   echo
@@ -451,8 +452,8 @@ prompt_password () {
 # HSTRY: The `TTT` command is a Homefries shell function.
 # COPYD: ~/.kit/sh/home-fries/lib/datetime_now_TTT.sh
 #   https://github.com/landonb/home-fries#🍟
-TTT () {
-  local sep="${1:--}";
+TTT() {
+  local sep="${1:--}"
 
   echo "$(date "+%Y${sep:--}%m${sep:--}%d")"
 }
@@ -461,7 +462,7 @@ TTT () {
 
 # USYNC: Similar: infuse_symlinks_paddock_home_subdir & infuse_symlinks_paddock_ssh
 #   ~/.kit/odd/321open/lib/biblio-ssh
-infuse_symlinks_paddock_home_subdir () {
+infuse_symlinks_paddock_home_subdir() {
   local home_subdir="$1"
   local subdir_type="$2"
 
@@ -476,9 +477,9 @@ infuse_symlinks_paddock_home_subdir () {
   cd "${HOME}"
 
   # For cosmetics, prefer relative path from ~/.gnupg to paddock.
-  local relative_path="$( \
-    echo "${ONEOPEN_KEYS_PADDOCK}" \
-    | sed -E "s@^${HOME}/@@"
+  local relative_path="$(
+    echo "${ONEOPEN_KEYS_PADDOCK}" |
+      sed -E "s@^${HOME}/@@"
   )/${home_subdir}"
 
   if [ ! -e "${relative_path}" ]; then
@@ -493,7 +494,7 @@ infuse_symlinks_paddock_home_subdir () {
 
 # ***
 
-remove_symlinks_paddock_home_subdir () {
+remove_symlinks_paddock_home_subdir() {
   local home_subpath="$1"
   local subdir_type="$2"
 
@@ -514,7 +515,7 @@ remove_symlinks_paddock_home_subdir () {
 
 # ***
 
-infuse_symlink_from_home_to_paddock_unless_conflict () {
+infuse_symlink_from_home_to_paddock_unless_conflict() {
   local source_filepath="$1"
   local target_basename="$2"
   local secret_type="$3"
@@ -533,7 +534,7 @@ infuse_symlink_from_home_to_paddock_unless_conflict () {
     return 1
   fi
 
-  warn_conflict () {
+  warn_conflict() {
     local what="$1"
 
     warn "Same-named ${secret_type} ${what} conflicts with source:\n" \
@@ -541,7 +542,7 @@ infuse_symlink_from_home_to_paddock_unless_conflict () {
       "  $(realpath -- "${source_filepath}")"
   }
 
-  print_type_and_path () {
+  print_type_and_path() {
     local what="$1"
 
     printf "%s" "${what}: $(fg_lightorange)${tilde_path}$(attr_reset)"
@@ -555,7 +556,7 @@ infuse_symlink_from_home_to_paddock_unless_conflict () {
       warn_conflict "link"
     fi
   elif [ -f "${target_basename}" ]; then
-    if diff -q "${target_basename}" "${source_filepath}" > /dev/null; then
+    if diff -q "${target_basename}" "${source_filepath}" >/dev/null; then
       info "$(fg_lightred)Clobbered$(attr_reset) $(print_type_and_path "file")"
 
       command rm -- "${target_basename}"
@@ -576,7 +577,7 @@ infuse_symlink_from_home_to_paddock_unless_conflict () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-highlight () { printf "%s" "$(fg_skyblue)$1$(attr_reset)"; }
+highlight() { printf "%s" "$(fg_skyblue)$1$(attr_reset)"; }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
@@ -586,18 +587,18 @@ highlight () { printf "%s" "$(fg_skyblue)$1$(attr_reset)"; }
 # - Or maybe keep `mountpoint` to suggest that macOS should port
 #   more basic commands, so us devs don't have to craft Big Parse.
 
-is_mountpoint () {
+is_mountpoint() {
   local path="$1"
 
-  if command -v mountpoint > /dev/null; then
+  if command -v mountpoint >/dev/null; then
     # Linux.
-    mountpoint "${path}" > /dev/null 2>&1
+    mountpoint "${path}" >/dev/null 2>&1
   else
     # `df` might fail, e.g., *df: /foo: No such file or directory*
     local mounted_on
-    mounted_on="$( \
-      df "${path}" 2> /dev/null \
-      | sed -E -ne' s#^.+(%|-) +(/.*$)#\2#p'
+    mounted_on="$(
+      df "${path}" 2>/dev/null |
+        sed -E -ne' s#^.+(%|-) +(/.*$)#\2#p'
     )"
 
     test "${mounted_on}" = "$(realpath -- "${path}")"
@@ -609,4 +610,3 @@ is_mountpoint () {
 _source_deps
 
 _biblio321_source_user_config_and_init_environs
-
