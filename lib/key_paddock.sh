@@ -601,6 +601,10 @@ EOF
     ! ${_FAILURE_EXPECTED:-false} || echo
   fi
 
+  # ALTLY: For POSIX-compatibility, you could replace the
+  # Heredoc <<<string and seed stdin with a trusty echo-pipe:
+  #   echo "${unattended_key_generation_parameters}" \
+  #     | gpg --batch --full-generate-key
   gpg --batch --full-generate-key <<<"${unattended_key_generation_parameters}"
 
   # STDERR:
