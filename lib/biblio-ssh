@@ -158,7 +158,11 @@ ssh_agent_ssh_add_encrypted_keys() {
     return 0
   fi
 
-  # ***
+  ssh_agent_ssh_add_encrypted_keys_using_pass_key "${PASS_ROOT_SSH}"
+}
+
+ssh_agent_ssh_add_encrypted_keys_using_pass_key() {
+  local pass_key="$1"
 
   notice "Add encrypted SSH keys with passphrases"
 
@@ -166,25 +170,27 @@ ssh_agent_ssh_add_encrypted_keys() {
   verify_environment
   verify_or_start_agent
 
-  if [ ! -d "${HOME}/.password-store/${PASS_ROOT_SSH}" ]; then
-    warn "ALERT: Skipping SSH hydrate [add \`pass ${PASS_ROOT_SSH}/<key-name>\` keys to use]"
+  if [ ! -d "${HOME}/.password-store/${pass_key}" ]; then
+    warn "ALERT: Skipping SSH hydrate [add \`pass ${pass_key}/<key-name>\` keys to use]"
 
     return 0
   fi
 
-  # Loop through ${PASS_ROOT_SSH}/{keyname} pass entries — the {keyname}
+  # Loop through ${pass_key}/{keyname} pass entries — the {keyname}
   # is the same as the ~/.ssh/{keyname}, and the first line of
   # the pass entry is the SSH encryption passphrase.
   for pass_gpg in $(
     $(_command_fd_or_fdfind) -d 1 ".gpg" \
-      "${HOME}/.password-store/${PASS_ROOT_SSH}"
+      "${HOME}/.password-store/${pass_key}"
   ); do
 
     local pass_path="${pass_gpg%.gpg}"
     local ssh_keyname="$(basename -- "${pass_path}")"
 
     local ssh_key_path="${HOME}/.ssh/${ssh_keyname}"
-    local passphrase="$(pass "${PASS_ROOT_SSH}/${ssh_keyname}" | head -1)"
+    local passphrase="$(
+      pass "${pass_key}/${ssh_keyname}" | head -1
+    )"
 
     # If this fails, ssh-agent-kick prints errors, and we let
     # errexit terminate this script.
