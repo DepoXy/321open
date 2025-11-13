@@ -284,7 +284,7 @@ USE_PREVALENT_PHRASE=${USE_PREVALENT_PHRASE:-true}
 unset -v PREVALENT_PHRASE
 
 # Ensure variables are not automatically exported
-# (which is already the shell default)
+# (which is (at least) the (Bash) shell default).
 set +o allexport
 
 PREVALENT_PHRASE=""
