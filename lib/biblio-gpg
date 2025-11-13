@@ -38,7 +38,7 @@ GH_SIGNING_KEY_PASSPTH="${GH_SIGNING_KEY_PASSPTH:-name/of/pass/key}"
 
 _biblio_gpg__this_filename="biblio-gpg"
 
-_biblio_gpg__source_deps () {
+_biblio_gpg__source_deps() {
   local sourced_all=true
 
   # On Bash, user can source this file from anywhere.
@@ -60,9 +60,9 @@ _biblio_gpg__source_deps () {
   ${sourced_all}
 }
 
-_biblio_gpg__smells_like_bash () { declare -p BASH_SOURCE > /dev/null 2>&1; }
+_biblio_gpg__smells_like_bash() { declare -p BASH_SOURCE >/dev/null 2>&1; }
 
-_biblio_gpg__print_this_fullpath () {
+_biblio_gpg__print_this_fullpath() {
   if _biblio_gpg__smells_like_bash; then
     echo "$(realpath -- "${BASH_SOURCE[0]}")"
   elif [ "$(basename -- "$0")" = "${_biblio_gpg__this_filename}" ]; then
@@ -76,11 +76,11 @@ _biblio_gpg__print_this_fullpath () {
 
 _biblio_gpg__this_fullpath="$(_biblio_gpg__print_this_fullpath)"
 
-_biblio_gpg__shell_sourced () {
+_biblio_gpg__shell_sourced() {
   [ "$(realpath -- "$0")" != "${_biblio_gpg__this_fullpath}" ]
 }
 
-_biblio_gpg__source_file () {
+_biblio_gpg__source_file() {
   local prfx="${1:-.}"
   local depd="${2:-.}"
   local file="${3:-.}"
@@ -121,10 +121,10 @@ _biblio_gpg__source_file () {
 
 # BONUS: You can use these aliases instead of the uniquely-named functions,
 # just be aware not to call any alias after calling _source_deps.
-_shell_sourced () { _biblio_gpg__shell_sourced; }
-_source_deps () { _biblio_gpg__source_deps; }
+_shell_sourced() { _biblio_gpg__shell_sourced; }
+_source_deps() { _biblio_gpg__source_deps; }
 
-_biblio_gpg__source_deps_unset_cleanup () {
+_biblio_gpg__source_deps_unset_cleanup() {
   unset -v _biblio_gpg__this_filename
   unset -f _biblio_gpg__print_this_fullpath
   unset -f _biblio_gpg__shell_sourced
@@ -167,19 +167,19 @@ PINENTRY_MODE=""
 
 # (Re)load ~/.gnupg/gpg-agent.conf (now that ~/.gnupg is mounted).
 
-gpg_reload_agent () {
+gpg_reload_agent() {
   >&2 gpg_reload_agent_shim
 
   info "Reloaded GPG agent"
 }
 
-gpg_reload_agent_shim () {
+gpg_reload_agent_shim() {
   # OUTPUT: OK
-  gpg-connect-agent reloadagent /bye 2>&1 >/dev/null \
-    | grep -v "^gpg-connect-agent: no running gpg-agent - starting '" \
-    | grep -v "^gpg-connect-agent: waiting for the agent to come up ... " \
-    | grep -v "^gpg-connect-agent: connection to the agent established$" \
-    || true
+  gpg-connect-agent reloadagent /bye 2>&1 >/dev/null |
+    grep -v "^gpg-connect-agent: no running gpg-agent - starting '" |
+    grep -v "^gpg-connect-agent: waiting for the agent to come up ... " |
+    grep -v "^gpg-connect-agent: connection to the agent established$" ||
+    true
 }
 
 # ***
@@ -187,13 +187,13 @@ gpg_reload_agent_shim () {
 # Unused. Just for show.
 # - CALSO:
 #   gpgconf --kill gpg-agent
-gpg_kill_agent () {
-  gpg-connect-agent killagent /bye > /dev/null
+gpg_kill_agent() {
+  gpg-connect-agent killagent /bye >/dev/null
 }
 
 # ***
 
-print_gpg_agent_hash () {
+print_gpg_agent_hash() {
   local conf_file="${HOME}/.gnupg/gpg-agent.conf"
 
   if ! [ -f "${conf_file}" ]; then
@@ -224,7 +224,7 @@ print_gpg_agent_hash () {
 #     $ echo RELOADAGENT | gpg-connect-agent
 #     OK
 
-gpg_forget_cache () {
+gpg_forget_cache() {
   gpgconf --reload gpg-agent
 }
 
@@ -246,8 +246,8 @@ gpg_forget_cache () {
 #
 # We could `pkill keyboxd`, or go through `gpgconf`.
 
-gpg_kill_keyboxd () {
-  if pgrep keyboxd > /dev/null; then
+gpg_kill_keyboxd() {
+  if pgrep keyboxd >/dev/null; then
     gpgconf --kill keyboxd
   fi
 }
@@ -272,7 +272,7 @@ gpg_kill_keyboxd () {
 # SAVVY/2024-03-18: We test the cache using `--pinentry-mode error`.
 # - ALTLY: Or use `--pinentry-mode cancel` (which appears the same).
 
-ensure_gpg_passphrase_cached () {
+ensure_gpg_passphrase_cached() {
   if ! [ -d "${HOME}/.gnupg" ]; then
     verbose "SKIPD: No ~/.gnupg [ensure_gpg_passphrase_cached]"
 
@@ -315,7 +315,7 @@ ensure_gpg_passphrase_cached () {
 
 # ***
 
-print_password_store_user_id_name () {
+print_password_store_user_id_name() {
   local user_id_name="${ONEOPEN_PASSWORD_STORE_EMAIL}"
 
   # Fallback: ~/.password-store/.gpg-id
@@ -339,20 +339,20 @@ print_password_store_user_id_name () {
 THE_PHRASE_THAT_PAYS="ꫝꪮ𝕥ꫀꪶ ᥴꪖꪶⅈᠻꪮ𝕣ꪀⅈꪖ such a lovely place"
 
 # Silently decrypt meaningless input to see if GPG key passphrase cached.
-probe_if_gpg_passphrase_cached () {
+probe_if_gpg_passphrase_cached() {
   local recipient
   recipient="$(print_password_store_user_id_name)"
 
-  echo "${THE_PHRASE_THAT_PAYS}" \
-    | gpg \
+  echo "${THE_PHRASE_THAT_PAYS}" |
+    gpg \
       -r "${recipient}" \
-      --encrypt \
-    | gpg --pinentry-mode error \
+      --encrypt |
+    gpg --pinentry-mode error \
       --decrypt \
-      > /dev/null 2>&1
+      >/dev/null 2>&1
 }
 
-ensure_gpg_passphrase_cached_secure () {
+ensure_gpg_passphrase_cached_secure() {
   local recipient
   recipient="$(print_password_store_user_id_name)"
 
@@ -373,18 +373,18 @@ ensure_gpg_passphrase_cached_secure () {
   # But the following in-place encrypt-decrypt requires just the GPG key
   # exist, and not an actual file.
 
-  echo "${THE_PHRASE_THAT_PAYS}" \
-    | gpg \
+  echo "${THE_PHRASE_THAT_PAYS}" |
+    gpg \
       -r "${recipient}" \
-      --encrypt \
-    | gpg ${PINENTRY_MODE} \
+      --encrypt |
+    gpg ${PINENTRY_MODE} \
       --decrypt \
-    > /dev/null 2>&1
+      >/dev/null 2>&1
 
   echo
 }
 
-ensure_gpg_passphrase_cached_cached () {
+ensure_gpg_passphrase_cached_cached() {
   local recipient
   recipient="$(print_password_store_user_id_name)"
 
@@ -407,17 +407,17 @@ ensure_gpg_passphrase_cached_cached () {
   # - SAVVY: 3<<< expands string and stores in file descriptor 3,
   #   which is then fed to gpg via --passphrase-fd 3.
   local output
-  output="$( \
-    exec 3<<< "${PREVALENT_PHRASE}" ; \
-    echo "${THE_PHRASE_THAT_PAYS}" \
-    | gpg \
-      -r "${recipient}" \
-      --encrypt \
-    | gpg --passphrase-fd 3 --pinentry-mode loopback \
-      --decrypt \
-      2> /dev/null
-  )" \
-    || true
+  output="$(
+    exec 3<<<"${PREVALENT_PHRASE}"
+    echo "${THE_PHRASE_THAT_PAYS}" |
+      gpg \
+        -r "${recipient}" \
+        --encrypt |
+      gpg --passphrase-fd 3 --pinentry-mode loopback \
+        --decrypt \
+        2>/dev/null
+  )" ||
+    true
 
   if [ "${output}" != "${THE_PHRASE_THAT_PAYS}" ]; then
     >&2 error "ERROR: GPG passphrase refresh failed:"
@@ -448,7 +448,7 @@ ensure_gpg_passphrase_cached_cached () {
 #     gpg-connect-agent reloadagent /bye
 # - Note this script calls gpg_reload_agent so this should not fail.
 
-gpg_preset_git_signing_key () {
+gpg_preset_git_signing_key() {
   if [ -z "${GH_SIGNING_KEY_KEYGRIP//X/}" ]; then
     # GH_SIGNING_KEY_KEYGRIP is still default "XXX"... value,
     # i.e., user has not enabled this mechanism.
@@ -458,17 +458,17 @@ gpg_preset_git_signing_key () {
   fi
 
   local gpresetp
-  gpresetp="$(print_gpg_preset_passphrase_path)" \
-    || return 1
+  gpresetp="$(print_gpg_preset_passphrase_path)" ||
+    return 1
 
   if ! ${gpresetp} -c ${GH_SIGNING_KEY_KEYGRIP} \
-    <<< $(pass "${GH_SIGNING_KEY_PASSPTH}" | head -1) \
-    2> /dev/null \
-  ; then
+    <<<$(pass "${GH_SIGNING_KEY_PASSPTH}" | head -1) \
+    2>/dev/null \
+    ; then
     >&2 echo "ERROR: gpg-preset-passphrase failed:"
 
     ${gpresetp} -c ${GH_SIGNING_KEY_KEYGRIP} \
-      <<< $(pass "${GH_SIGNING_KEY_PASSPTH}" | head -1) \
+      <<<$(pass "${GH_SIGNING_KEY_PASSPTH}" | head -1) \
       2>&1 | >&2 sed 's/^/  /'
 
     exit_1
@@ -479,7 +479,7 @@ gpg_preset_git_signing_key () {
 
 # ***
 
-print_gpg_preset_passphrase_path () {
+print_gpg_preset_passphrase_path() {
   local gpresetp
   gpresetp="/usr/lib/gnupg2/gpg-preset-passphrase"
 
@@ -508,7 +508,7 @@ print_gpg_preset_passphrase_path () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-gpg_reload_agent_and_recache_passphrase () {
+gpg_reload_agent_and_recache_passphrase() {
   local gpg_agent_hash="$1"
 
   # (Re)load ~/.gnupg/gpg-agent.conf if it changed (e.g.,
@@ -524,17 +524,16 @@ gpg_reload_agent_and_recache_passphrase () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-infuse_symlinks_paddock_gpg () {
+infuse_symlinks_paddock_gpg() {
   infuse_symlinks_paddock_home_subdir ".gnupg" "GPG"
 }
 
 # ***
 
-remove_symlinks_paddock_gpg () {
+remove_symlinks_paddock_gpg() {
   remove_symlinks_paddock_home_subdir ".gnupg" "GPG"
 }
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 _source_deps
-
