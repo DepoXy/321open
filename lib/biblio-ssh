@@ -129,7 +129,7 @@ _biblio_ssh__source_deps_unset_cleanup() {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-# Set to `pass` path to sudo password.
+# Set to `pass` key containing sudo password.
 # - E.g.,
 #  PASS_ROOT_SSH="${PASS_ROOT_SSH:-phy/ssh}"
 PASS_ROOT_SSH="${PASS_ROOT_SSH}"

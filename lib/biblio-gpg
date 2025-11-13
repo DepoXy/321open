@@ -404,6 +404,8 @@ ensure_gpg_passphrase_cached_cached () {
   #       gpg --passphrase-fd 0 --batch --pinentry-mode loopback \
   #         -d "${gpg_decrypt_ref}" \
   #   But (if we get complicated) we can do similar without needing disk file.
+  # - SAVVY: 3<<< expands string and stores in file descriptor 3,
+  #   which is then fed to gpg via --passphrase-fd 3.
   local output
   output="$( \
     exec 3<<< "${PREVALENT_PHRASE}" ; \

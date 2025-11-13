@@ -280,7 +280,7 @@ USE_PREVALENT_PHRASE=${USE_PREVALENT_PHRASE:-true}
 #    password on bash become part of stdin to a program?*
 #   https://unix.stackexchange.com/a/232083
 
-# Ensure variable is not exported
+# Ensure pass passphrase variable is not exported.
 unset -v PREVALENT_PHRASE
 
 # Ensure variables are not automatically exported
@@ -405,6 +405,10 @@ ensure_password_store_admin_entry_exists() {
 
   # Avoid pinentry `pass` PWD prompt.
   if [ -n "${PREVALENT_PHRASE}" ]; then
+    # Send passphrase to GPG so later commands don't need it (so
+    # long as this script finishes running within the timeout).
+    # - We will not use PREVALENT_PHRASE again, but instead assume
+    #   that pass calls (using cached gpg passphrase) will succeed.
     ensure_gpg_passphrase_cached_cached
   fi
 
