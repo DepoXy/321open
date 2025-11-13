@@ -599,6 +599,12 @@ is_mountpoint() {
     mountpoint "${path}" >/dev/null 2>&1
   else
     # `df` might fail, e.g., *df: /foo: No such file or directory*
+    # Check the df path is the same as $path, e.g.,
+    #   $ df /media/user/device
+    #   Filesystem      1K-blocks       Used Available Use% Mounted on
+    #   /dev/sdb1      5814123112 5140942692 380139680  94% /media/user/device
+    #   $ df /media/user/device | sed -E -ne' s#^.+(%|-) +(/.*$)#\2#p'
+    #   /media/user/device
     local mounted_on
     mounted_on="$(
       df "${path}" 2>/dev/null |
