@@ -15,7 +15,7 @@ __USAGE__='
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_321open_source_deps () {
+_321open_source_deps() {
   local _321_root="${1:-$(dirname -- "$(realpath -- "${BASH_SOURCE[0]}")")/..}"
 
   if [ -z "${BASH_SOURCE}" ]; then
@@ -25,7 +25,7 @@ _321open_source_deps () {
   fi
 
   # Loads APFS_*, DMG_*, prompt_passphrase, highlight, etc.
-  # - CXREF: ~/.kit/odd/321open/bin/biblio.321
+  # - CXREF: ~/.kit/odd/321open/lib/biblio.321
   #   - Also sources:
   #     - Loads error, notice, info, debug, etc., and colors.sh.
   #       ~/.kit/sh/sh-logger/bin/logger.sh
@@ -53,7 +53,7 @@ _321open_source_deps () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_apfs_mount () {
+_apfs_mount() {
   local volume_name="$1"
   local volume_mntpt="$2"
   local encfs_type="$3"
@@ -83,15 +83,15 @@ _apfs_mount () {
   fi
 
   local device
-  device="$(print_apfs_volume_id "${volume_name}" 2> /dev/null)" \
-    || true
+  device="$(print_apfs_volume_id "${volume_name}" 2>/dev/null)" ||
+    true
 
   if [ -n "${device}" ]; then
     # CXREF: ~/.kit/mOS/macOS-disktools/bin/apfs-mount
-    printf "%s" "${PREVALENT_PHRASE}" \
-      | VERBOSE="${VERBOSE:-false}" \
-          apfs_mount "${volume_name}" ${pass_arg} \
-          || exit_1
+    printf "%s" "${PREVALENT_PHRASE}" |
+      VERBOSE="${VERBOSE:-false}" \
+        apfs_mount "${volume_name}" ${pass_arg} ||
+      exit_1
   else
     notice "Add-ing volume: $(highlight "${volume_name}")"
 
@@ -104,17 +104,17 @@ _apfs_mount () {
     #  diskutil apfs addVolume /dev/disk3 "Case-sensitive APFS" "fantasm" \
     #   -stdinpassphrase
 
-    printf "%s" "${PREVALENT_PHRASE}" \
-      | VERBOSE="${VERBOSE:-false}" \
-          apfs_mount --create "${volume_name}" ${pass_arg} ${noauto} \
-          || exit_1
+    printf "%s" "${PREVALENT_PHRASE}" |
+      VERBOSE="${VERBOSE:-false}" \
+        apfs_mount --create "${volume_name}" ${pass_arg} ${noauto} ||
+      exit_1
 
     created_fs=true
 
     if [ "${encfs_type}" = "encfs" ]; then
       VERBOSE="${VERBOSE:-false}" \
-        apfs_mount --noauto "${volume_name}" \
-          || exit_1
+        apfs_mount --noauto "${volume_name}" ||
+        exit_1
 
       notice "Writ noauto to: /etc/fstab"
     fi
@@ -130,7 +130,7 @@ _apfs_mount () {
 
 # ***
 
-dmg_mount_encfs () {
+dmg_mount_encfs() {
   local image_path="$1"
   local dmg_mntpt="$2"
   local image_size="$3"
@@ -163,17 +163,17 @@ dmg_mount_encfs () {
   fi
 
   local image_real
-  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
-    || exit_1
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" ||
+    exit_1
 
   restore_readwrite_image "${image_real}"
 
   if [ -f "${image_real}" ]; then
     # CXREF: ~/.kit/mOS/macOS-disktools/bin/dmg-mount
-    printf "%s" "${PREVALENT_PHRASE}" \
-      | VERBOSE="${VERBOSE:-false}" \
-          dmg_mount ${pass_arg} "${image_real}" \
-          || exit_1
+    printf "%s" "${PREVALENT_PHRASE}" |
+      VERBOSE="${VERBOSE:-false}" \
+        dmg_mount ${pass_arg} "${image_real}" ||
+      exit_1
   else
     notice "Creating image: $(highlight "${image_name}")"
 
@@ -183,11 +183,11 @@ dmg_mount_encfs () {
     #   -type "SPARSE" -encryption "AES-256" -stdinpass -size "50m" \
     #   -fs "Case-sensitive APFS" -nospotlight -volname "vestige" -attach
 
-    printf "%s" "${PREVALENT_PHRASE}" \
-      | VERBOSE="${VERBOSE:-false}" \
-          dmg_mount ${pass_arg} -size "${image_size}" \
-            --create "${image_real}" -attach \
-          || exit_1
+    printf "%s" "${PREVALENT_PHRASE}" |
+      VERBOSE="${VERBOSE:-false}" \
+        dmg_mount ${pass_arg} -size "${image_size}" \
+        --create "${image_real}" -attach ||
+      exit_1
 
     created_fs=true
   fi
@@ -197,13 +197,13 @@ dmg_mount_encfs () {
 
 # ***
 
-restore_readwrite_image () {
+restore_readwrite_image() {
   local image_real="$1"
 
-  if [ -f "${image_real}" ] \
-    || ! ${DMG_OBFUSCATE_NAME:-true} \
-    || [ ${DMG_IMAGE_SUFFIX} != ".sparseimage" ] \
-  ; then
+  if [ -f "${image_real}" ] ||
+    ! ${DMG_OBFUSCATE_NAME:-true} ||
+    [ ${DMG_IMAGE_SUFFIX} != ".sparseimage" ] \
+    ; then
 
     return 0
   fi
@@ -218,7 +218,7 @@ restore_readwrite_image () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-main () {
+main() {
   set -e
 
   # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
@@ -239,23 +239,24 @@ main () {
   # Note that the plain mount is setup to auto-mount, but user can
   # bring it offline in a PANIC; and we'll always mount on 321open.
   local apfs_mntpt_plain=""
-  apfs_mntpt_plain="$(print_volume_mountpoint "${APFS_PLAIN_VOLUME_NAME}" 2> /dev/null)" \
-    || true
+  apfs_mntpt_plain="$(print_volume_mountpoint "${APFS_PLAIN_VOLUME_NAME}" 2>/dev/null)" ||
+    true
 
   local apfs_mntpt_encfs=""
-  apfs_mntpt_encfs="$(print_volume_mountpoint "${APFS_ENCFS_VOLUME_NAME}" 2> /dev/null)" \
-    || true
+  apfs_mntpt_encfs="$(print_volume_mountpoint "${APFS_ENCFS_VOLUME_NAME}" 2>/dev/null)" ||
+    true
 
   local dmg_mntpt_encfs=""
-  dmg_mntpt_encfs="$(print_disk_image_mountpoint "${DMG_ENCFS_IMAGE_PATH}" 2> /dev/null)" \
-    || true
+  dmg_mntpt_encfs="$(print_disk_image_mountpoint "${DMG_ENCFS_IMAGE_PATH}" 2>/dev/null)" ||
+    true
 
   # If either encfs not mounted, prompt for passphrase.
-  if ${USE_PREVALENT_PHRASE:-true} && (false \
-    || [ -z "${apfs_mntpt_encfs}" ] \
-    || [ -z "${dmg_mntpt_encfs}" ] \
-    || (! verify_key_paddock_repo_and_home_dir_symlinks \
-        && [ -z "$(print_password_store_key_ids)" ]) \
+  if ${USE_PREVALENT_PHRASE:-true} && (
+    false ||
+      [ -z "${apfs_mntpt_encfs}" ] ||
+      [ -z "${dmg_mntpt_encfs}" ] ||
+      (! verify_key_paddock_repo_and_home_dir_symlinks &&
+        [ -z "$(print_password_store_key_ids)" ])
   ); then
 
     # Sets PREVALENT_PHRASE
@@ -270,17 +271,17 @@ main () {
   # but it'll be there for emergencies (like, if have to work on docs
   # with case-clashes, that's the only use case that comes to mind).
   APFS_PERSONALITY="Case-sensitive APFS" \
-  _apfs_mount "${APFS_PLAIN_VOLUME_NAME}" "${apfs_mntpt_plain}" "plain"
+    _apfs_mount "${APFS_PLAIN_VOLUME_NAME}" "${apfs_mntpt_plain}" "plain"
 
   # This mounts (creates as necessary) two encrypted volumes, one APFS,
   # and one DMG. (There's no reason to have one of each, but the author
   # is comparing the two for any performance or functional differences.)
 
   APFS_PERSONALITY="APFS" \
-  _apfs_mount "${APFS_ENCFS_VOLUME_NAME}" "${apfs_mntpt_encfs}" "encfs"
+    _apfs_mount "${APFS_ENCFS_VOLUME_NAME}" "${apfs_mntpt_encfs}" "encfs"
 
   DMG_FILESYSTEM="APFS" \
-  dmg_mount_encfs "${DMG_ENCFS_IMAGE_PATH}" "${dmg_mntpt_encfs}" "${DMG_ENCFS_IMAGE_SIZE}"
+    dmg_mount_encfs "${DMG_ENCFS_IMAGE_PATH}" "${dmg_mntpt_encfs}" "${DMG_ENCFS_IMAGE_SIZE}"
 
   # ***
 
@@ -317,9 +318,9 @@ main () {
   # ***
 
   # CXREF: ~/.kit/odd/321open/etc/motd/motd-bbr
-  echo "$(fg_red)$(bg_black)$( \
-    cat "$(dirname -- "$(realpath -- "$0")")/../etc/motd/motd-bbr" \
-    | sed 's/^/  /'
+  echo "$(fg_red)$(bg_black)$(
+    cat "$(dirname -- "$(realpath -- "$0")")/../etc/motd/motd-bbr" |
+      sed 's/^/  /'
   )$(attr_reset)"
 
   if ${created_fs} && [ -n "${USE_PREVALENT_PHRASE:-true}" ]; then
@@ -341,4 +342,3 @@ main () {
 if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
   main "$@"
 fi
-
