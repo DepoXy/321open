@@ -357,9 +357,6 @@ ensure_gpg_passphrase_cached_secure() {
   recipient="$(print_password_store_user_id_name)"
 
   local gpg_prompt="Please spill your guts"
-  if ${gpg_prompting_again:-false}; then
-    gpg_prompt="${gpg_prompt} (again)"
-  fi
 
   echo
   echo "${gpg_prompt}"
