@@ -188,9 +188,7 @@ feed_agent() {
       continue
     fi
 
-    ssh_add_key_possibly_encrypted "${ssh_key_path}"
-
-    if [ $? -eq 0 ]; then
+    if ssh_add_key_possibly_encrypted "${ssh_key_path}"; then
       ${_LOG_NAME_SAK:-info} "ssh-add: $(highlight "${ssh_key_path}")"
     # else, warn or error already printed.
     fi
