@@ -237,7 +237,7 @@ ssh_add_key_possibly_encrypted() {
 ssh_key_is_encrypted() {
   local ssh_key_path="$1"
 
-  ssh-keygen -y -P "" -f "${ssh_key_path}" >/dev/null 2>&1
+  ! ssh-keygen -y -P "" -f "${ssh_key_path}" >/dev/null 2>&1
 }
 
 ssh_add_key_protected() {
@@ -286,6 +286,8 @@ ssh_add_key_protected_without_passphrase_maybe() {
     ssh_add_key_without_passphrase "${ssh_key_path}"
   else
     ${_LOG_NAME_SAK:-info} "ssh-add: Skipping protected key: $(highlight "${ssh_key_path}")"
+
+    return 1
   fi
 }
 
