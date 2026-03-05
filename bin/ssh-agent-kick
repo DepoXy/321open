@@ -271,9 +271,8 @@ ssh_add_key_without_passphrase() {
 
   # Seems odd that ssh-add prints the success message, e.g.,
   # "Identify added: /home/user/.ssh/id_acme_rsa", to stderr.
-  /usr/bin/ssh-add "${ssh_key_path}" 2>/dev/null
 
-  if [ $? -ne 0 ]; then
+  if ! /usr/bin/ssh-add "${ssh_key_path}" 2>/dev/null; then
     warn "BWARE: ssh-add failed (b/c you entered bad password?): ${ssh_key_path}"
 
     return 1
@@ -312,6 +311,7 @@ ssh_add_key_with_passphrase() {
   #   "missing close-bracket while executing send "1234["
   passphrase="$(echo "${passphrase}" | /usr/bin/env sed -E 's#\[#\\[#g')"
 
+  local success=true
   local response
   response="$(
     command expect -c " \
@@ -320,13 +320,13 @@ ssh_add_key_with_passphrase() {
       send \"${passphrase}\n\"; \
       interact ; \
     " 2>&1 1>/dev/null
-  )"
+  )" || success=false
   # OUTPUT, e.g.:
   # spawn /usr/bin/ssh-add /home/user/.ssh/id_acme_ed25519
   # Enter passphrase for /home/user/.ssh/id_acme_ed25519:
   # Identity added: /home/user/.ssh/id_acme_ed25519 (Acme)
 
-  if [ $? -ne 0 ]; then
+  if ! ${success}; then
     # On error, expect outputs, e.g.,
     #   send: spawn id exp4 not open
     #       while executing
