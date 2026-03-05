@@ -454,6 +454,12 @@ gpg_preset_git_signing_key() {
     return 0
   fi
 
+  if ! [ -d "${HOME}/.password-store" ]; then
+    warn "ALERT: Skipping preset GH signing key [mount ~/.password-store to use]"
+
+    return 0
+  fi
+
   local gpresetp
   gpresetp="$(print_gpg_preset_passphrase_path)" ||
     return 1
