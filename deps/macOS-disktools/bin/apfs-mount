@@ -538,7 +538,7 @@ _apfsmount_process_args() {
   elif [ -n "${mount_dir}" ]; then
     mkdir -p -- "${mount_dir}"
 
-    if [ -n "$(ls -A ${mount_dir})" ]; then
+    if [ -n "$(command ls -A -- "${mount_dir}")" ]; then
       >&2 echo "ERROR: mountpoint is not empty: ${mount_dir}"
 
       exit_1

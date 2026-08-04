@@ -32,8 +32,8 @@
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_dmgmount_source_deps () {
-  if ! os_is_macos || ! command -v diskutil > /dev/null; then
+_dmgmount_source_deps() {
+  if ! os_is_macos || ! command -v diskutil >/dev/null; then
     >&2 echo "ERROR: Requires @macOS"
 
     exit_1
@@ -42,7 +42,7 @@ _dmgmount_source_deps () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-dmg_mount () {
+dmg_mount() {
   _dmgmount_init_environ_args
 
   # Script vars set by `_dmgmount_process_args`
@@ -75,7 +75,7 @@ dmg_mount () {
 
 # REFER: `hdiutil create -help`
 
-_dmgmount_init_environ_args () {
+_dmgmount_init_environ_args() {
   # Choose from: "HFS+", "Case-sensitive APFS", and more.
   DMG_FILESYSTEM="${DMG_FILESYSTEM:-APFS}"
 
@@ -137,11 +137,11 @@ _dmgmount_init_environ_args () {
   #     DMG_IMAGE_TYPE=SPARSEBUNDLE dmg-mount ...
   DMG_IMAGE_TYPE="${DMG_IMAGE_TYPE:-SPARSE}"
 
-  print_image_suffix () {
+  print_image_suffix() {
     case "${DMG_IMAGE_TYPE}" in
-      UDIF) printf ".dmg" ;;
-      SPARSE) printf ".sparseimage" ;;
-      SPARSEBUNDLE) printf ".sparsebundle" ;;
+    UDIF) printf ".dmg" ;;
+    SPARSE) printf ".sparseimage" ;;
+    SPARSEBUNDLE) printf ".sparsebundle" ;;
     esac
   }
   DMG_IMAGE_SUFFIX="$(print_image_suffix)"
@@ -173,7 +173,7 @@ _dmgmount_init_environ_args () {
 #   $ printf pp | hdiutil create -encryption -stdinpass -size 100k -type "SPARSE" -fs "HFS+" foobar
 #   hdiutil: create failed - Operation not permitted
 
-create_disk_image () {
+create_disk_image() {
   if test -z "${di_size}"; then
     echo "ERROR: Please specify the disk image size."
 
@@ -185,8 +185,8 @@ create_disk_image () {
   # double-suffix).
   # - Get the full path, including the mandatory suffix.
   local image_real
-  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
-    || return 1
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" ||
+    return 1
 
   if [ -f "${image_real}" ]; then
     >&2 echo "ERROR: Image already exists: ${image_real}"
@@ -221,7 +221,7 @@ create_disk_image () {
   mkdir -p -- "${image_dir}"
 
   local cmd
-  cmd="$( \
+  cmd="$(
     echo "hdiutil create \"${image_real}\"" \
       "-type \"${DMG_IMAGE_TYPE}\"" \
       "${encryption_arg}" \
@@ -230,7 +230,7 @@ create_disk_image () {
       "-fs \"${DMG_FILESYSTEM}\"" \
       "-nospotlight" \
       "-volname \"${volume_name}\"" \
-      "${attach_arg}" \
+      "${attach_arg}"
   )"
 
   _dmgmount_eval_cmd "${cmd}" "hdiutil-create" "Create Disk Image" \
@@ -251,7 +251,7 @@ create_disk_image () {
 #   /dev/disk5          	EF57347C-0000-11AA-AA11-0030654
 #   /dev/disk5s1        	41504653-0000-11AA-AA11-0030654	/path/to/dmg
 
-mount_disk_image () {
+mount_disk_image() {
   if is_disk_image_mounted "${image_path}"; then
     echo "Already mounted: ${image_path}"
 
@@ -259,8 +259,8 @@ mount_disk_image () {
   fi
 
   local image_real
-  image_real="$(resolve_image_path "${image_path}")" \
-    || return 1
+  image_real="$(resolve_image_path "${image_path}")" ||
+    return 1
 
   if [ "-agentpass" = "${passphrase_arg}" ]; then
     # Omit to summon prompt.
@@ -268,11 +268,11 @@ mount_disk_image () {
   fi
 
   local cad
-  cmd="$( \
+  cmd="$(
     echo "hdiutil attach" \
       "${image_path}" \
       "${mountpoint_arg}" \
-      "${passphrase_arg}" \
+      "${passphrase_arg}"
   )"
 
   _dmgmount_eval_cmd "${cmd}" "hdiutil-attach" "Mount Disk Image" \
@@ -281,7 +281,7 @@ mount_disk_image () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-unmount_disk_image () {
+unmount_disk_image() {
   if ! is_disk_image_mounted "${image_path}"; then
     echo "Not currently mounted: ${image_path}"
 
@@ -289,12 +289,12 @@ unmount_disk_image () {
   fi
 
   local image_real
-  image_real="$(resolve_image_path "${image_path}")" \
-    || return 1
+  image_real="$(resolve_image_path "${image_path}")" ||
+    return 1
 
   local mountpoint
-  mountpoint="$(print_disk_image_mountpoint "${image_path}")" \
-    || return 1
+  mountpoint="$(print_disk_image_mountpoint "${image_path}")" ||
+    return 1
 
   # Similarly:
   #   hdiutil eject ${mountpoint}
@@ -309,7 +309,7 @@ unmount_disk_image () {
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
 # NODRY: USYNC: ~/.kit/mOS/macOS-disktools/bin/apfs-mount ↔ .../dmg-mount
-_dmgmount_eval_cmd () {
+_dmgmount_eval_cmd() {
   local cmd="$1"
   local quip="$2"
   local msg="$3"
@@ -333,9 +333,9 @@ _dmgmount_eval_cmd () {
 
   if ${cmd_failed}; then
     # Check if, e.g., "hdiutil: couldn't unmount "disk5" - Resource busy"
-    if echo "${cmd_output}" \
-      | grep -q "^hdiutil: couldn't unmount \"[^\"]\\+\" - Resource busy$" \
-    ; then
+    if echo "${cmd_output}" |
+      grep -q "^hdiutil: couldn't unmount \"[^\"]\\+\" - Resource busy$" \
+      ; then
       unmount_failed=true
     fi
 
@@ -346,7 +346,7 @@ _dmgmount_eval_cmd () {
       #     NAME
       #   keyboxd 58838 user    5u   REG   1,25    65536 18407
       #     /Volumes/vestige/.clench/.gnupg/public-keys.d/pubring.db
-      if ! lsof "${name}" > /dev/null; then
+      if ! lsof "${name}" >/dev/null; then
         # So, `lsof` doesn't skow any apps... is it safe to `-force`?
         unmount_cmd="${cmd} -force"
         if unmount_output="$(eval "${unmount_cmd}" 2>&1)"; then
@@ -423,18 +423,18 @@ _dmgmount_eval_cmd () {
 #   - This is different from apfs-mount, which uses the volume
 #     name to determine if mounted, and to find the mountpoint.
 
-is_disk_image_mounted () {
+is_disk_image_mounted() {
   local image_real
-  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
-    || exit_1
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" ||
+    exit_1
 
   hdiutil info | grep -q -e "^image-path \+: \+${image_real}$"
 }
 
-resolve_image_path () {
+resolve_image_path() {
   local image_real
-  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
-    || return 1
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" ||
+    return 1
 
   if [ ! -f "${image_real}" ]; then
     >&2 echo "ERROR: No such image path: ${image_path}"
@@ -450,7 +450,7 @@ resolve_image_path () {
 # - BWARE: If you remove or change the suffix, `hdituil attach` will mount
 #   the image read-only (and regardless if you `hdiutil attach -readwrite`).
 
-print_image_path_canonicalize_missing () {
+print_image_path_canonicalize_missing() {
   local image_path="$1"
 
   if [ -z "${image_path}" ]; then
@@ -466,10 +466,14 @@ print_image_path_canonicalize_missing () {
 
 # ***
 
-gnu_readlink () {
+gnu_readlink() {
   for cmd in "greadlink" "readlink"; do
-    ( unset -f ${cmd}; unalias ${cmd}; command -v ${cmd} ) 2> /dev/null \
-      && break
+    (
+      unset -f ${cmd}
+      unalias ${cmd}
+      command -v ${cmd}
+    ) 2>/dev/null &&
+      break
   done
 }
 
@@ -499,7 +503,7 @@ gnu_readlink () {
 #       END { if (state == 1) { print last; } }'
 #   /path/to/mountpoint
 
-print_disk_image_mountpoint () {
+print_disk_image_mountpoint() {
   local image_path="$1"
 
   if [ -z "${image_path}" ]; then
@@ -509,13 +513,13 @@ print_disk_image_mountpoint () {
   fi
 
   local image_real
-  image_real="$(print_image_path_canonicalize_missing "${image_path}")" \
-    || return 1
+  image_real="$(print_image_path_canonicalize_missing "${image_path}")" ||
+    return 1
 
   # ***
 
-  hdiutil info \
-  | awk '
+  hdiutil info |
+    awk '
     BEGIN {
       state = 0;
       pattern = "^image-path +: '${image_real}'$";
@@ -536,7 +540,7 @@ print_disk_image_mountpoint () {
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-_dmgmount_process_args () {
+_dmgmount_process_args() {
   # do_mount is implied (if not other command specifed),
   # but included in args. for --help completeness.
   local do_mount=false
@@ -546,59 +550,59 @@ _dmgmount_process_args () {
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      -h|--help|help)
-        _dmgmount_print_usage
+    -h | --help | help)
+      _dmgmount_print_usage
 
-        exit_0
+      exit_0
+      ;;
+    -a | --add | -c | --create)
+      do_create=true
+      let 'cmd_count += 1'
+      ;;
+    -s | -size | --size)
+      di_size="$2"
+      [ $# -gt 1 ] && shift
+      ;;
+    # REFER: Passphrase options:
+    #   -encryption | -stdinpass | -agentpass | -certificate | -pubkey
+    # - This script assumes -encryption, which means
+    #   -agentpass is the default.
+    -agentpass | --prompt)
+      passphrase_arg="-agentpass"
+      ;;
+    -stdinpass | --stdin)
+      # SAVVY/2024-05-26: Doc says "expects null-terminated input"
+      # but works fine with `printf "%s" "<pwd>" | hdiutil ...`.
+      passphrase_arg="-stdinpass"
+      ;;
+    -attach | --attach)
+      attach_arg="-attach"
+      ;;
+    -u | --umount | --unmount)
+      do_unmount=true
+      let 'cmd_count += 1'
+      ;;
+    -m | --mount)
+      do_mount=true
+      let 'cmd_count += 1'
+      ;;
+    *)
+      npargs=$((npargs + 1))
+
+      case ${npargs} in
+      1)
+        image_path="$1"
         ;;
-      -a|--add|-c|--create)
-        do_create=true
-        let 'cmd_count += 1'
-        ;;
-      -s|-size|--size)
-        di_size="$2"
-        [ $# -gt 1 ] && shift
-        ;;
-      # REFER: Passphrase options:
-      #   -encryption | -stdinpass | -agentpass | -certificate | -pubkey
-      # - This script assumes -encryption, which means
-      #   -agentpass is the default.
-      -agentpass|--prompt)
-        passphrase_arg="-agentpass"
-        ;;
-      -stdinpass|--stdin)
-        # SAVVY/2024-05-26: Doc says "expects null-terminated input"
-        # but works fine with `printf "%s" "<pwd>" | hdiutil ...`.
-        passphrase_arg="-stdinpass"
-        ;;
-      -attach|--attach)
-        attach_arg="-attach"
-        ;;
-      -u|--umount|--unmount)
-        do_unmount=true
-        let 'cmd_count += 1'
-        ;;
-      -m|--mount)
-        do_mount=true
-        let 'cmd_count += 1'
+      2)
+        mount_dir="$1"
         ;;
       *)
-        npargs=$((npargs + 1))
+        >&2 echo "ERROR: Unknown arg(s): $@"
 
-        case ${npargs} in
-          1)
-            image_path="$1"
-            ;;
-          2)
-            mount_dir="$1"
-            ;;
-          *)
-            >&2 echo "ERROR: Unknown arg(s): $@"
-
-            exit_1
-            ;;
-        esac
+        exit_1
         ;;
+      esac
+      ;;
     esac
 
     shift
@@ -626,7 +630,7 @@ _dmgmount_process_args () {
   elif [ -n "${mount_dir}" ]; then
     mkdir -p -- "${mount_dir}"
 
-    if [ -n "$(ls -A ${mount_dir})" ]; then
+    if [ -n "$(command -- ls -A -- "${mount_dir}")" ]; then
       >&2 echo "ERROR: mountpoint is not empty: ${mount_dir}"
 
       exit_1
@@ -638,7 +642,7 @@ _dmgmount_process_args () {
 
 # ***
 
-_dmgmount_print_usage () {
+_dmgmount_print_usage() {
   echo "USAGE: $(basename -- "$0") [OPTIONS] IMAGE_PATH [MOUNT_DIR]
 
 Create, mount, and unmount Disk Images ... using opinionated defaults
@@ -695,7 +699,7 @@ OPTIONS
 
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ #
 
-main () {
+main() {
   set -e
 
   # Load: set_traps, clear_traps, exit_0, exit_1, os_is_macos.
@@ -718,4 +722,3 @@ main () {
 if [ -n "${BASH_SOURCE}" ] && [ "$0" = "${BASH_SOURCE[0]}" ]; then
   main "$@"
 fi
-
